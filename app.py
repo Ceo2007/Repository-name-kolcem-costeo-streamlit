@@ -1,4 +1,4 @@
-# app_costeo_cemento_v9_tendencias.py
+# app_costeo_cemento_v12_tendencias.py
 # Dashboard gerencial de costeo de cemento - v9 comparaciones seleccionables y tendencias mensuales
 # Fuente: Excel con hoja Consolidado y, opcionalmente, Metas Gerenciales
 
