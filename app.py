@@ -784,7 +784,7 @@ st.markdown(
     """
     <div class="hero-card">
         <div class="hero-title">Cockpit Gerencial de Costeo de Cemento</div>
-        <div class="hero-subtitle"> · comparación seleccionable, tendencias mensuales, micrográficos y prompt con lectura evolutiva.</div>
+        <div class="hero-subtitle"> · Costeo Jose.</div>
         <div class="calm-note">Paleta visual serena: verde solo para mejoras reales, rojo para pérdidas o deterioros relevantes, y ámbar para atención controlada.</div>
     </div>
     """,
