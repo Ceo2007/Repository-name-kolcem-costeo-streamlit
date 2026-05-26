@@ -18,7 +18,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 st.set_page_config(
-    page_title="Kolcem · Cockpit Gerencial",
+    page_title="Kolcem · Buenos Cimientos",
     page_icon="🏗️",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -27,8 +27,8 @@ st.set_page_config(
 import plotly.io as pio
 
 # ── Enterprise dark palette ──────────────────────────────
-ENTERPRISE_PALETTE = ["#00C9C8","#C9A84C","#00C47A","#60A5FA","#F472B6","#F59E0B","#A78BFA"]
-POSITIVE_GREEN = "#00C47A"
+ENTERPRISE_PALETTE = ["#E8650A","#F5A623","#2DBD6E","#60A5FA","#F472B6","#F59E0B","#A78BFA"]
+POSITIVE_GREEN = "#2DBD6E"
 WARNING_AMBER  = "#F59E0B"
 NEGATIVE_RED   = "#FF4059"
 NEUTRAL_SLATE  = "#94A3B8"
@@ -58,7 +58,7 @@ pio.templates["kolcem_dark"] = go.layout.Template(
         legend=dict(bgcolor="rgba(255,255,255,0.04)", bordercolor="rgba(255,255,255,0.08)",
                     borderwidth=1, font=dict(color=_TEXT_SEC)),
         colorway=ENTERPRISE_PALETTE,
-        hoverlabel=dict(bgcolor="#1E2A3A", bordercolor="#00C9C8", font=dict(color=_TEXT_PRI)),
+        hoverlabel=dict(bgcolor="#1E2A3A", bordercolor="#E8650A", font=dict(color=_TEXT_PRI)),
         margin=dict(l=40, r=40, t=55, b=50),
     )
 )
@@ -72,11 +72,12 @@ st.markdown("""
     --bg-primary:   #080D18;
     --bg-secondary: #0D1426;
     --bg-card:      rgba(255,255,255,0.04);
-    --border-teal:  rgba(0,201,200,0.18);
+    --border-brand: rgba(232,101,10,0.22);
+    --border-teal:  rgba(232,101,10,0.22);
     --border-sub:   rgba(255,255,255,0.07);
-    --teal:         #00C9C8;
-    --gold:         #C9A84C;
-    --green:        #00C47A;
+    --brand:        #E8650A;
+    --gold:         #F5A623;
+    --green:        #2DBD6E;
     --red:          #FF4059;
     --amber:        #F59E0B;
     --text-pri:     #E2E8F0;
@@ -90,30 +91,30 @@ st.markdown("""
 .stApp {
     background: #080D18;
     background-image:
-        radial-gradient(ellipse at 12% 8%,  rgba(0,201,200,0.08) 0%, transparent 45%),
-        radial-gradient(ellipse at 88% 92%, rgba(201,168,76,0.06) 0%, transparent 45%);
+        radial-gradient(ellipse at 12% 8%,  rgba(232,101,10,0.07) 0%, transparent 45%),
+        radial-gradient(ellipse at 88% 92%, rgba(245,166,35,0.05) 0%, transparent 45%);
     color: var(--text-pri);
 }
 
 /* ── Sidebar ──────────────────────────── */
 section[data-testid="stSidebar"] {
     background: linear-gradient(180deg,#0A1020 0%,#0D1528 100%) !important;
-    border-right: 1px solid var(--border-teal) !important;
+    border-right: 1px solid var(--border-brand) !important;
 }
 section[data-testid="stSidebar"] .stMarkdown p,
 section[data-testid="stSidebar"] label { color: var(--text-sec) !important; }
 section[data-testid="stSidebar"] h2,
 section[data-testid="stSidebar"] h3 {
-    color: var(--teal) !important;
+    color: var(--brand) !important;
     font-family: 'Sora', sans-serif !important;
     font-size: 0.72rem !important; font-weight:700 !important;
     letter-spacing:0.12em !important; text-transform:uppercase !important;
 }
-section[data-testid="stSidebar"] hr { border-color: rgba(0,201,200,0.12) !important; }
+section[data-testid="stSidebar"] hr { border-color: rgba(232,101,10,0.15) !important; }
 section[data-testid="stSidebar"] .stFileUploader {
-    border: 1px dashed rgba(0,201,200,0.3) !important;
+    border: 1px dashed rgba(232,101,10,0.35) !important;
     border-radius: 14px !important;
-    background: rgba(0,201,200,0.04) !important;
+    background: rgba(232,101,10,0.05) !important;
     padding: 8px !important;
 }
 
@@ -134,27 +135,27 @@ h1,h2,h3,h4 { font-family:'Sora',sans-serif !important; color:var(--text-pri) !i
 /* ── Hero ─────────────────────────────── */
 .hero-card {
     background: linear-gradient(135deg,rgba(13,20,38,0.97) 0%,rgba(8,13,24,0.99) 100%);
-    border: 1px solid rgba(0,201,200,0.22);
+    border: 1px solid rgba(232,101,10,0.25);
     border-radius: 24px; padding: 34px 40px; margin-bottom: 24px;
     position: relative; overflow: hidden;
-    box-shadow: 0 0 70px rgba(0,201,200,0.07), 0 24px 60px rgba(0,0,0,0.6);
+    box-shadow: 0 0 70px rgba(232,101,10,0.08), 0 24px 60px rgba(0,0,0,0.6);
 }
 .hero-card::before {
     content:''; position:absolute; top:0; left:0; right:0; height:1px;
-    background: linear-gradient(90deg,transparent,#00C9C8 40%,#C9A84C 70%,transparent);
+    background: linear-gradient(90deg,transparent,#E8650A 40%,#F5A623 70%,transparent);
 }
 .hero-card::after {
     content:''; position:absolute; top:-100px; right:-100px;
     width:380px; height:380px;
-    background: radial-gradient(circle,rgba(0,201,200,0.07) 0%,transparent 65%);
+    background: radial-gradient(circle,rgba(232,101,10,0.07) 0%,transparent 65%);
     pointer-events:none;
 }
 .hero-badge {
     display:inline-flex; align-items:center; gap:7px;
-    background:rgba(0,201,200,0.1); border:1px solid rgba(0,201,200,0.28);
+    background:rgba(232,101,10,0.1); border:1px solid rgba(232,101,10,0.32);
     border-radius:999px; padding:4px 14px;
     font-family:'Sora',sans-serif; font-size:0.7rem; font-weight:700;
-    letter-spacing:0.12em; text-transform:uppercase; color:#00C9C8;
+    letter-spacing:0.12em; text-transform:uppercase; color:#E8650A;
     margin-bottom:16px;
 }
 .hero-dot {
@@ -166,7 +167,7 @@ h1,h2,h3,h4 { font-family:'Sora',sans-serif !important; color:var(--text-pri) !i
     font-family:'Sora',sans-serif;
     font-size:clamp(1.75rem,2.8vw,2.7rem); font-weight:800;
     letter-spacing:-0.045em; line-height:1.05;
-    background:linear-gradient(135deg,#E2E8F0 25%,#00C9C8 65%,#C9A84C 100%);
+    background:linear-gradient(135deg,#F5F0EB 20%,#E8650A 60%,#F5A623 100%);
     -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
     margin-bottom:10px;
 }
@@ -194,11 +195,11 @@ h1,h2,h3,h4 { font-family:'Sora',sans-serif !important; color:var(--text-pri) !i
 }
 .kpi-neutral::before { background:#64748B; }
 .kpi-green {
-    background:linear-gradient(135deg,rgba(0,196,122,0.09) 0%,rgba(0,196,122,0.04) 100%);
-    border:1px solid rgba(0,196,122,0.22);
-    box-shadow:var(--shadow-card),0 0 24px rgba(0,196,122,0.09);
+    background:linear-gradient(135deg,rgba(45,189,110,0.09) 0%,rgba(45,189,110,0.04) 100%);
+    border:1px solid rgba(45,189,110,0.22);
+    box-shadow:var(--shadow-card),0 0 24px rgba(45,189,110,0.09);
 }
-.kpi-green::before { background:linear-gradient(180deg,#00C47A,#00E676); }
+.kpi-green::before { background:linear-gradient(180deg,#2DBD6E,#4AE898); }
 .kpi-yellow {
     background:linear-gradient(135deg,rgba(245,158,11,0.09) 0%,rgba(245,158,11,0.04) 100%);
     border:1px solid rgba(245,158,11,0.22);
@@ -222,7 +223,7 @@ h1,h2,h3,h4 { font-family:'Sora',sans-serif !important; color:var(--text-pri) !i
     font-weight:700; letter-spacing:-0.025em; line-height:1.1;
     font-variant-numeric:tabular-nums;
 }
-.kpi-green  .kpi-value { color:#00C47A; }
+.kpi-green  .kpi-value { color:#2DBD6E; }
 .kpi-yellow .kpi-value { color:#F59E0B; }
 .kpi-red    .kpi-value { color:#FF4059; }
 .kpi-neutral .kpi-value{ color:var(--text-pri); }
@@ -230,7 +231,7 @@ h1,h2,h3,h4 { font-family:'Sora',sans-serif !important; color:var(--text-pri) !i
     margin-top:8px; font-family:'DM Sans',sans-serif;
     font-size:0.74rem; font-weight:600; line-height:1.3;
 }
-.kpi-green  .kpi-delta  { color:#00C47A; }
+.kpi-green  .kpi-delta  { color:#2DBD6E; }
 .kpi-yellow .kpi-delta  { color:#F59E0B; }
 .kpi-red    .kpi-delta  { color:#FF4059; }
 .kpi-neutral .kpi-delta { color:var(--text-sec); }
@@ -249,12 +250,12 @@ h1,h2,h3,h4 { font-family:'Sora',sans-serif !important; color:var(--text-pri) !i
     transition:all .2s ease !important;
 }
 .stTabs [data-baseweb="tab"]:hover {
-    background:rgba(0,201,200,0.08) !important; color:var(--teal) !important;
+    background:rgba(232,101,10,0.08) !important; color:var(--brand) !important;
 }
 .stTabs [aria-selected="true"] {
-    background:linear-gradient(135deg,#00C9C8,#009D9C) !important;
-    color:#080D18 !important; font-weight:700 !important;
-    box-shadow:0 4px 14px rgba(0,201,200,0.35) !important;
+    background:linear-gradient(135deg,#E8650A,#C94E00) !important;
+    color:#FFFFFF !important; font-weight:700 !important;
+    box-shadow:0 4px 14px rgba(232,101,10,0.4) !important;
 }
 
 /* ── DataFrames ───────────────────────── */
@@ -272,22 +273,22 @@ div[data-testid="stMetric"] {
 
 /* ── Buttons ──────────────────────────── */
 .stButton > button, .stDownloadButton > button {
-    background:linear-gradient(135deg,#00C9C8,#00A8A7) !important;
-    color:#080D18 !important; border:none !important;
+    background:linear-gradient(135deg,#E8650A,#C94E00) !important;
+    color:#FFFFFF !important; border:none !important;
     border-radius:999px !important; font-family:'DM Sans',sans-serif !important;
     font-weight:700 !important; letter-spacing:0.03em !important;
-    box-shadow:0 4px 16px rgba(0,201,200,0.3) !important;
+    box-shadow:0 4px 16px rgba(232,101,10,0.3) !important;
     transition:all .2s ease !important;
 }
 .stButton > button:hover, .stDownloadButton > button:hover {
     transform:translateY(-1px) !important;
-    box-shadow:0 6px 22px rgba(0,201,200,0.4) !important;
+    box-shadow:0 6px 22px rgba(232,101,10,0.4) !important;
 }
 
 /* ── Alert/info boxes ─────────────────── */
 div[data-testid="stInfo"] {
-    background:rgba(0,201,200,0.07) !important;
-    border-left:4px solid #00C9C8 !important; border-radius:12px !important;
+    background:rgba(232,101,10,0.06) !important;
+    border-left:4px solid #E8650A !important; border-radius:12px !important;
     color:var(--text-sec) !important;
 }
 div[data-testid="stWarning"] {
@@ -299,13 +300,13 @@ div[data-testid="stError"] {
     border-left:4px solid #FF4059 !important; border-radius:12px !important;
 }
 div[data-testid="stSuccess"] {
-    background:rgba(0,196,122,0.07) !important;
-    border-left:4px solid #00C47A !important; border-radius:12px !important;
+    background:rgba(45,189,110,0.07) !important;
+    border-left:4px solid #2DBD6E !important; border-radius:12px !important;
 }
 
 /* ── Misc ─────────────────────────────── */
 .calm-note {
-    background:rgba(0,201,200,0.06); border-left:4px solid rgba(0,201,200,0.45);
+    background:rgba(232,101,10,0.06); border-left:4px solid rgba(232,101,10,0.45);
     border-radius:12px; padding:12px 16px; color:var(--text-sec);
     font-size:0.84rem; margin:10px 0 4px;
 }
@@ -319,8 +320,8 @@ div[data-testid="stSuccess"] {
 hr, .stDivider { border-color:rgba(255,255,255,0.07) !important; }
 ::-webkit-scrollbar { width:5px; height:5px; }
 ::-webkit-scrollbar-track { background:rgba(255,255,255,0.02); }
-::-webkit-scrollbar-thumb { background:rgba(0,201,200,0.28); border-radius:3px; }
-::-webkit-scrollbar-thumb:hover { background:rgba(0,201,200,0.48); }
+::-webkit-scrollbar-thumb { background:rgba(232,101,10,0.32); border-radius:3px; }; border-radius:3px; }
+::-webkit-scrollbar-thumb:hover { background:rgba(232,101,10,0.52); }; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -873,12 +874,12 @@ def pareto_chart(df_pareto: pd.DataFrame, title: str, top_n: int = 12):
     fig.add_trace(go.Scatter(x=data["Observacion"], y=data["Acumulado"], name="% acumulado", yaxis="y2", mode="lines+markers"))
     fig.update_traces(
         selector=dict(type="bar"),
-        marker_color="#00C9C8", marker_line_color="rgba(0,201,200,0.3)", marker_line_width=1,
+        marker_color="#E8650A", marker_line_color="rgba(232,101,10,0.25)", marker_line_width=1,
         opacity=0.85
     )
     fig.update_traces(
         selector=dict(type="scatter"),
-        line_color="#C9A84C", marker_color="#C9A84C", marker_size=7,
+        line_color="#F5A623", marker_color="#F5A623", marker_size=7,
     )
     fig.update_layout(
         title=title,
@@ -898,7 +899,7 @@ def waterfall(title: str, labels: list[str], values: list[float], total_label: s
         measure=["relative"] * len(values) + ["total"],
         x=labels + [total_label],
         y=values + [sum(values)],
-        connector={"line": {"color": "rgba(0,201,200,0.25)", "width": 1, "dash": "dot"}},
+        connector={"line": {"color": "rgba(232,101,10,0.3)", "width": 1, "dash": "dot"}},
         increasing={"marker": {"color": "#FF4059", "line": {"color": "#FF4059", "width": 1}}},
         decreasing={"marker": {"color": "#00C47A", "line": {"color": "#00C47A", "width": 1}}},
         totals={"marker": {"color": "#00C9C8", "line": {"color": "#00C9C8", "width": 1}}},
@@ -926,13 +927,40 @@ def to_excel_bytes(sheets: dict[str, pd.DataFrame]) -> bytes:
 
 st.markdown("""
 <div class="hero-card">
-  <div class="hero-badge"><span class="hero-dot"></span>Sistema en vivo</div>
-  <div class="hero-title">Cockpit Gerencial · Costeo de Cemento</div>
-  <div class="hero-subtitle">Análisis ejecutivo de costos industriales &mdash; Empacado · Granel · Comercial · Tendencias · Metodología</div>
-  <div class="calm-note">Verde = mejora real de costo o margen &nbsp;·&nbsp; Ámbar = atención controlada &nbsp;·&nbsp; Rojo = pérdida o deterioro relevante.</div>
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:16px;">
+    <div style="flex:1;min-width:260px;">
+      <div class="hero-badge"><span class="hero-dot"></span>Sistema en vivo &nbsp;·&nbsp; Kolcem S.A.S.</div>
+      <div class="hero-title">Cockpit Gerencial · Costeo de Cemento</div>
+      <div class="hero-subtitle">Análisis ejecutivo de costos industriales &mdash; Empacado · Granel · Comercial · Tendencias · Metodología</div>
+      <div class="calm-note" style="margin-top:14px;">
+        🟢 Verde = mejora real de costo o margen &nbsp;&nbsp;
+        🟡 Ámbar = atención controlada &nbsp;&nbsp;
+        🔴 Rojo = pérdida o deterioro relevante
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;padding-top:4px;">
+      <img src="https://www.kolcem.com/wp-content/uploads/2022/09/LOGO-1024x715.png"
+           style="height:68px;width:auto;object-fit:contain;filter:brightness(1.1);"
+           onerror="this.style.display='none'" alt="Kolcem" />
+      <span style="font-family:'Sora',sans-serif;font-size:0.72rem;font-weight:700;
+                   letter-spacing:0.1em;text-transform:uppercase;color:rgba(245,166,35,0.85);">
+        Buenos Cimientos
+      </span>
+    </div>
+  </div>
 </div>
 """, unsafe_allow_html=True)
 
+st.sidebar.markdown("""
+<div style="text-align:center;padding:12px 8px 16px;border-bottom:1px solid rgba(232,101,10,0.15);margin-bottom:14px;">
+  <img src="https://www.kolcem.com/wp-content/uploads/2022/09/LOGO-1024x715.png"
+       style="max-height:52px;width:auto;object-fit:contain;"
+       onerror="this.style.display='none'" alt="Kolcem" />
+  <div style="font-family:'Sora',sans-serif;font-size:0.65rem;font-weight:700;
+              letter-spacing:0.14em;text-transform:uppercase;
+              color:rgba(245,166,35,0.7);margin-top:6px;">Buenos Cimientos</div>
+</div>
+""", unsafe_allow_html=True)
 uploaded = st.sidebar.file_uploader("Cargar Excel de costeo", type=["xlsm", "xlsx"])
 if uploaded is None:
     st.info("Carga el Excel con la hoja Consolidado para iniciar.")
@@ -1291,7 +1319,7 @@ with tabs[0]:
             pd.DataFrame({"Componente": ["Empacado", "Gastos", "Extra"], "Valor por saco": [costo_saco_emp, gastos_saco, gastos_extra_saco]}),
             x="Componente", y="Valor por saco", title="Construcción del costo / saco",
             color="Componente",
-            color_discrete_map={"Empacado":"#00C9C8","Gastos":"#C9A84C","Extra":"#F59E0B"},
+            color_discrete_map={"Empacado":"#E8650A","Gastos":"#F5A623","Extra":"#F59E0B"},
         )
         fig.update_traces(marker_line_width=0, opacity=0.9)
         fig.update_layout(showlegend=False, height=340)
@@ -1339,8 +1367,8 @@ with tabs[1]:
     with col_b:
         fig = px.line(sens_df, x="Margen objetivo", y="Precio sin extra antes IVA", markers=True, title="Curva de precio objetivo antes de IVA")
         fig.update_yaxes(tickprefix="$")
-        fig.update_traces(line_color="#00C9C8", line_width=2.5, marker_color="#C9A84C", marker_size=8)
-        fig.add_hline(y=precio_actual, line_dash="dot", line_color="#FF4059", annotation_text="Precio actual", annotation_font_color="#FF4059")
+        fig.update_traces(line_color="#E8650A", line_width=2.5, marker_color="#F5A623", marker_size=8)
+        fig.add_hline(y=precio_actual, line_dash="dot", line_color="#FF4059", annotation_text="Precio actual", annotation_font_color="#FF4059", line_width=1.5)
         st.plotly_chart(fig, use_container_width=True)
 
 with tabs[2]:
@@ -1356,7 +1384,7 @@ with tabs[2]:
     with col_b:
         comp = pd.DataFrame({"Componente": ["MP", "MO", "CIF"], "Valor": [c_mp_ug, c_mo_ug, c_cif_ug]})
         fig_pie = px.pie(comp, names="Componente", values="Valor", title="Composición granel",
-                         color_discrete_sequence=["#00C9C8","#C9A84C","#00C47A"])
+                         color_discrete_sequence=["#E8650A","#F5A623","#2DBD6E"])
         fig_pie.update_traces(textfont_color="#080D18", pull=[0.04,0,0])
         st.plotly_chart(fig_pie, use_container_width=True)
     pareto_g = build_pareto(resumen_por_observacion(df_mes, INDICES_GRANEL), und_emp, kg_emp)
@@ -1381,7 +1409,7 @@ with tabs[3]:
     with col_b:
         comp = pd.DataFrame({"Componente": ["Cemento granel", "MP/Empaque", "MO", "CIF"], "Valor": [cemento_transf, c_mp_emp - cemento_transf, c_mo_emp, c_cif_emp]})
         fig_pie2 = px.pie(comp, names="Componente", values="Valor", title="Composición empacado",
-                          color_discrete_sequence=["#00C9C8","#C9A84C","#00C47A","#F59E0B"])
+                          color_discrete_sequence=["#E8650A","#F5A623","#2DBD6E","#F59E0B"])
         fig_pie2.update_traces(textfont_color="#080D18", pull=[0.04,0,0,0])
         st.plotly_chart(fig_pie2, use_container_width=True)
     pareto_e = build_pareto(resumen_por_observacion(df_mes, INDICES_EMPACADO), und_emp, kg_emp)
@@ -1508,12 +1536,12 @@ with tabs[7]:
         col1, col2 = st.columns(2)
         with col1:
             fig = px.line(kpis_mensuales, x="Periodo", y="UND producidas", markers=True, title="UND producidas empacado")
-            fig.update_traces(line_color="#00C9C8", line_width=2.5, marker_color="#00C47A", marker_size=7)
+            fig.update_traces(line_color="#E8650A", line_width=2.5, marker_color="#F5A623", marker_size=7)
             fig.update_layout(height=340, xaxis_tickangle=-35)
             st.plotly_chart(fig, use_container_width=True)
         with col2:
             fig = px.line(kpis_mensuales, x="Periodo", y="Kg granel", markers=True, title="Kg producidos granel")
-            fig.update_traces(line_color="#C9A84C", line_width=2.5, marker_color="#F59E0B", marker_size=7)
+            fig.update_traces(line_color="#F5A623", line_width=2.5, marker_color="#E8650A", marker_size=7)
             fig.update_layout(height=340, xaxis_tickangle=-35)
             st.plotly_chart(fig, use_container_width=True)
 
@@ -1529,8 +1557,8 @@ with tabs[7]:
         st.plotly_chart(fig, use_container_width=True)
 
         fig = px.line(kpis_mensuales, x="Periodo", y="Margen real", markers=True, title="Margen real mensual")
-        fig.update_traces(line_color="#00C47A", line_width=2.5, marker_size=8,
-                          fill="tozeroy", fillcolor="rgba(0,196,122,0.1)")
+        fig.update_traces(line_color="#2DBD6E", line_width=2.5, marker_size=8,
+                          fill="tozeroy", fillcolor="rgba(45,189,110,0.1)")
         fig.update_yaxes(tickformat=".1%")
         fig.update_layout(height=350, xaxis_tickangle=-35)
         st.plotly_chart(fig, use_container_width=True)
@@ -1568,8 +1596,8 @@ with tabs[7]:
                         mode="lines+markers",
                         name=f"Dominante: {obs_dominante}",
                         yaxis="y",
-                        line=dict(width=3.5, color="#00C9C8"),
-                        marker=dict(size=9, color="#C9A84C", line=dict(color="#00C9C8", width=2)),
+                        line=dict(width=3.5, color="#E8650A"),
+                        marker=dict(size=9, color="#F5A623", line=dict(color="#E8650A", width=2)),
                         hovertemplate="%{x}<br>%{fullData.name}<br>Valor: %{y:,.0f}<extra></extra>",
                     )
                 )
