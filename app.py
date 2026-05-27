@@ -344,7 +344,9 @@ MESES_INV = {v: k for k, v in MESES.items()}
 
 INDICES_GRANEL = ["C MP UG", "C MO UG", "C CIF UG"]
 INDICES_EMPACADO = ["C MP EMP", "C MO EMP", "C CIF EMP"]
-INDICES_GASTOS_COMERCIALES = ["C MO ADM", "C CIF ADM", "C MO VEN", "C CIF VEN", "C FIN", "C IMP"]
+INDICES_GASTOS_COMERCIALES_BASE = ["C MO ADM", "C CIF ADM", "C MO VEN", "C CIF VEN", "C FIN", "C IMP"]
+INDICES_IMPUESTOS_OPCIONALES = ["C IMP REN", "C IMP PATR"]
+INDICES_GASTOS_COMERCIALES = INDICES_GASTOS_COMERCIALES_BASE.copy()
 INDICES_COSTO_TOTAL = INDICES_EMPACADO + INDICES_GASTOS_COMERCIALES
 
 OBS_KG_GRANEL = "KG PRODUCIDOS Q"
@@ -617,6 +619,7 @@ KPIs principales:
 - Costo incremental de empaque por saco: {fmt_money(incremental_saco)}
 - Gastos asignados por saco: {fmt_money(gastos_saco)}
 - Gastos extraordinarios por saco: {fmt_money(gastos_extra_saco)}
+- Nota sobre impuestos opcionales: el costo total comercial puede incluir C IMP REN y/o C IMP PATR si el usuario los activó en la barra lateral.
 - Kg granel producidos: {fmt_number(kg_granel, 0)}
 - Unidades empacadas producidas: {fmt_number(und_emp, 0)}
 - Kg empacados producidos: {fmt_number(kg_emp, 0)}
@@ -1051,6 +1054,26 @@ umbral_impacto_saco = st.sidebar.number_input(
     help="Desviación mínima por saco para que una observación aparezca como relevante.",
 )
 
+st.sidebar.divider()
+st.sidebar.subheader("Impuestos opcionales")
+incluir_imp_renta = st.sidebar.checkbox(
+    "Incluir C IMP REN en costo",
+    value=False,
+    help="Impuesto de renta. Si se activa, se suma al costo total comercial y al precio objetivo.",
+)
+incluir_imp_patrimonio = st.sidebar.checkbox(
+    "Incluir C IMP PATR en costo",
+    value=False,
+    help="Impuesto de patrimonio. Si se activa, se suma al costo total comercial y al precio objetivo.",
+)
+
+INDICES_GASTOS_COMERCIALES = INDICES_GASTOS_COMERCIALES_BASE.copy()
+if incluir_imp_renta:
+    INDICES_GASTOS_COMERCIALES.append("C IMP REN")
+if incluir_imp_patrimonio:
+    INDICES_GASTOS_COMERCIALES.append("C IMP PATR")
+INDICES_COSTO_TOTAL = INDICES_EMPACADO + INDICES_GASTOS_COMERCIALES
+
 # ------------------------------------------------------------
 # Cálculos centrales
 # ------------------------------------------------------------
@@ -1079,6 +1102,13 @@ incremental_kg = safe_div(incremental_emp, kg_emp)
 costos_gastos = suma_indices(df_mes, INDICES_GASTOS_COMERCIALES)
 gastos_saco = safe_div(costos_gastos, und_emp)
 gastos_kg = safe_div(costos_gastos, kg_emp)
+
+imp_renta_total = suma_indices(df_mes, ["C IMP REN"])
+imp_patrimonio_total = suma_indices(df_mes, ["C IMP PATR"])
+impuestos_opcionales_df = pd.DataFrame([
+    ["C IMP REN", "Impuesto de renta", imp_renta_total, safe_div(imp_renta_total, und_emp), safe_div(imp_renta_total, kg_emp), "Sí" if incluir_imp_renta else "No"],
+    ["C IMP PATR", "Impuesto de patrimonio", imp_patrimonio_total, safe_div(imp_patrimonio_total, und_emp), safe_div(imp_patrimonio_total, kg_emp), "Sí" if incluir_imp_patrimonio else "No"],
+], columns=["Índice", "Concepto", "Valor total", "$/saco", "$/kg", "Aplica al costo"])
 
 gastos_extra = float(df_mes.loc[df_mes["Prod_norm"].str.contains("GASTOS EXTRA", na=False), "Valor"].sum())
 gastos_extra_saco = safe_div(gastos_extra, und_emp)
@@ -1267,6 +1297,7 @@ tabs = st.tabs([
     "🎯 Metas / Exportar",
     "📐 Metodología",
     "🤖 Análisis IA",
+    "🧮 Simulador Toneladas",
 ])
 
 with tabs[0]:
@@ -1420,6 +1451,10 @@ with tabs[3]:
 with tabs[4]:
     st.subheader(f"Gastos administrativos, ventas, financieros e impuestos - {periodo.etiqueta}")
     st.caption("Estos índices no hacen parte del costo industrial puro, pero sí alimentan el costo total comercial y el precio mínimo de venta.")
+
+    st.markdown("### Impuestos opcionales")
+    st.caption("C IMP REN y C IMP PATR se muestran siempre, pero solo afectan costo, margen y precio objetivo cuando están activados en la barra lateral.")
+    dataframe_gerencial(impuestos_opcionales_df)
 
     gastos_detalle = df_mes[df_mes["Indice_norm"].isin({norm_text(i) for i in INDICES_GASTOS_COMERCIALES})].copy()
     gastos_por_indice = (
@@ -1697,6 +1732,8 @@ with tabs[9]:
             ["Margen objetivo", margen_obj, "% sobre precio"],
             ["Kg por saco", 50, "kg"],
             ["Mes", periodo.etiqueta, "periodo"],
+            ["C IMP REN aplicado al costo", "Sí" if incluir_imp_renta else "No", "opcional"],
+            ["C IMP PATR aplicado al costo", "Sí" if incluir_imp_patrimonio else "No", "opcional"],
         ], columns=["Parámetro", "Valor", "Unidad"])
         dataframe_gerencial(params)
     with col_b:
@@ -1719,6 +1756,7 @@ with tabs[9]:
     export_bytes = to_excel_bytes({
         "Resumen": export_resumen,
         "Alertas": alertas_df,
+        "Impuestos Opcionales": impuestos_opcionales_df,
         "Datos Mes": df_mes[["Produccion", "Indice", "Observacion", "Valor", "Mes", "Ano", "MesNro"]],
     })
     st.download_button(
@@ -1766,6 +1804,10 @@ with tabs[10]:
         ["Total gastos asignables", "C MO ADM + C CIF ADM + C MO VEN + C CIF VEN + C FIN + C IMP", costos_gastos, gastos_saco, gastos_kg],
     ], columns=["Paso", "Índices / fórmula", "Valor total", "$/saco", "$/kg"])
     dataframe_gerencial(paso_gastos)
+
+    st.markdown("### Impuestos opcionales de renta y patrimonio")
+    st.caption("Estos dos índices son parametrizables. Si están apagados, se reportan pero no se suman al costo total comercial.")
+    dataframe_gerencial(impuestos_opcionales_df)
 
     st.markdown("### 4. Construcción del costo total comercial")
     puente_comercial = pd.DataFrame([
@@ -1872,4 +1914,203 @@ with tabs[11]:
     st.info(
         "ChatGPT se abre limpio por seguridad del navegador. Copia el prompt del cuadro o descarga el .txt y pégalo en ChatGPT. "
         "El análisis debe maximizar rentabilidad sin sacrificar calidad, seguridad, mantenimiento crítico ni cumplimiento."
+    )
+
+
+with tabs[12]:
+    st.subheader("Simulador de precios por toneladas producidas")
+    st.caption("Modelo aprobado: materias primas escalan con producción; administración y mano de obra de producción permanecen constantes; costos de venta escalan con la nueva venta.")
+
+    tons_base = safe_div(kg_emp, 1000)
+    sacos_por_ton = 20.0
+    precio_ton_actual = precio_actual * sacos_por_ton
+    venta_base = und_emp * precio_actual
+
+    c_adm_base = suma_indices(df_mes, ["C MO ADM", "C CIF ADM"])
+    c_ventas_base = suma_indices(df_mes, ["C MO VEN", "C CIF VEN"])
+    c_fin_base = suma_indices(df_mes, ["C FIN"])
+    c_imp_base = suma_indices(df_mes, ["C IMP"])
+    costo_ventas_pct_base = safe_div(c_ventas_base, venta_base)
+
+    st.markdown("### Parámetros de simulación")
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        toneladas_sim = st.number_input(
+            "Toneladas proyectadas",
+            min_value=0.0,
+            value=float(tons_base if tons_base > 0 else 1.0),
+            step=10.0,
+            format="%.2f",
+            key="pricing_toneladas_sim",
+        )
+    with col2:
+        precio_ton_sim = st.number_input(
+            "Precio venta / tonelada antes IVA",
+            min_value=0.0,
+            value=float(precio_ton_actual if precio_ton_actual > 0 else 0.0),
+            step=1000.0,
+            format="%.2f",
+            key="pricing_precio_ton_sim",
+        )
+    with col3:
+        margen_meta_sim = st.number_input(
+            "Margen meta simulador",
+            min_value=0.0,
+            max_value=0.95,
+            value=float(margen_obj if margen_obj > 0 else 0.15),
+            step=0.01,
+            format="%.2f",
+            key="pricing_margen_meta_sim",
+        )
+    with col4:
+        costo_ventas_pct_sim = st.number_input(
+            "Costo de ventas sobre venta",
+            min_value=0.0,
+            max_value=1.0,
+            value=float(costo_ventas_pct_base if costo_ventas_pct_base > 0 else 0.0),
+            step=0.005,
+            format="%.3f",
+            key="pricing_costo_ventas_pct_sim",
+            help="Por defecto usa C MO VEN + C CIF VEN dividido entre la venta actual.",
+        )
+
+    col_cfg1, col_cfg2, col_cfg3, col_cfg4 = st.columns(4)
+    with col_cfg1:
+        comportamiento_cif = st.selectbox(
+            "CIF producción",
+            ["Variable por toneladas", "Fijo", "Semi-variable 50/50"],
+            index=0,
+            key="pricing_cif_behavior",
+        )
+    with col_cfg2:
+        incluir_fin_sim = st.checkbox("Incluir C FIN", value=True, key="pricing_incluir_fin")
+    with col_cfg3:
+        incluir_imp_base_sim = st.checkbox("Incluir C IMP", value=True, key="pricing_incluir_imp_base")
+    with col_cfg4:
+        incluir_extra_sim = st.checkbox("Incluir gastos extraordinarios", value=False, key="pricing_incluir_extra")
+
+    factor_prod = safe_div(toneladas_sim, tons_base)
+    sacos_sim = toneladas_sim * sacos_por_ton
+    venta_sim = toneladas_sim * precio_ton_sim
+
+    mp_sim = c_mp_emp * factor_prod
+    mo_prod_sim = c_mo_emp
+    if comportamiento_cif == "Variable por toneladas":
+        cif_prod_sim = c_cif_emp * factor_prod
+    elif comportamiento_cif == "Semi-variable 50/50":
+        cif_prod_sim = (c_cif_emp * 0.5) + (c_cif_emp * 0.5 * factor_prod)
+    else:
+        cif_prod_sim = c_cif_emp
+
+    adm_sim = c_adm_base
+    ventas_sim = venta_sim * costo_ventas_pct_sim
+    fin_sim = c_fin_base if incluir_fin_sim else 0.0
+    imp_base_sim = c_imp_base if incluir_imp_base_sim else 0.0
+    imp_renta_sim = imp_renta_total if incluir_imp_renta else 0.0
+    imp_patr_sim = imp_patrimonio_total if incluir_imp_patrimonio else 0.0
+    extra_sim = gastos_extra if incluir_extra_sim else 0.0
+
+    costo_total_sim = mp_sim + mo_prod_sim + cif_prod_sim + adm_sim + ventas_sim + fin_sim + imp_base_sim + imp_renta_sim + imp_patr_sim + extra_sim
+    costo_ton_sim = safe_div(costo_total_sim, toneladas_sim)
+    costo_saco_sim = safe_div(costo_total_sim, sacos_sim)
+    utilidad_sim = venta_sim - costo_total_sim
+    margen_sim = safe_div(utilidad_sim, venta_sim)
+    precio_eq_ton = costo_ton_sim
+    precio_obj_ton = safe_div(costo_ton_sim, 1 - margen_meta_sim)
+    precio_obj_saco_sim = safe_div(precio_obj_ton, sacos_por_ton)
+    precio_obj_ton_iva = precio_obj_ton * (1 + iva)
+    precio_obj_saco_iva = precio_obj_saco_sim * (1 + iva)
+
+    st.markdown("### Resultado ejecutivo")
+    k1, k2, k3, k4 = st.columns(4)
+    with k1:
+        kpi("Factor de producción", f"{num(factor_prod, 2)}x", help_text=f"Base actual: {num(tons_base, 2)} t")
+    with k2:
+        kpi("Costo proyectado / tonelada", money(costo_ton_sim))
+    with k3:
+        kpi("Margen proyectado", pct(margen_sim), tone="red" if margen_sim < 0 else "green")
+    with k4:
+        kpi("Utilidad proyectada", money(utilidad_sim), tone="red" if utilidad_sim < 0 else "green")
+
+    k1, k2, k3, k4 = st.columns(4)
+    with k1:
+        kpi("Precio equilibrio / tonelada", money(precio_eq_ton))
+    with k2:
+        kpi("Precio objetivo / tonelada", money(precio_obj_ton), help_text=f"Margen meta: {pct(margen_meta_sim)}")
+    with k3:
+        kpi("Precio objetivo / saco", money(precio_obj_saco_sim))
+    with k4:
+        kpi("Precio objetivo + IVA / saco", money(precio_obj_saco_iva))
+
+    st.markdown("### Puente de costos proyectado")
+    simulacion_df = pd.DataFrame([
+        ["Materias primas", "Variable por toneladas", c_mp_emp, factor_prod, mp_sim, safe_div(mp_sim, toneladas_sim), safe_div(mp_sim, sacos_sim)],
+        ["Mano de obra producción", "Fijo", c_mo_emp, 1.0, mo_prod_sim, safe_div(mo_prod_sim, toneladas_sim), safe_div(mo_prod_sim, sacos_sim)],
+        ["CIF producción", comportamiento_cif, c_cif_emp, safe_div(cif_prod_sim, c_cif_emp), cif_prod_sim, safe_div(cif_prod_sim, toneladas_sim), safe_div(cif_prod_sim, sacos_sim)],
+        ["Administración", "Fijo", c_adm_base, 1.0, adm_sim, safe_div(adm_sim, toneladas_sim), safe_div(adm_sim, sacos_sim)],
+        ["Costos de venta", "% sobre nueva venta", c_ventas_base, costo_ventas_pct_sim, ventas_sim, safe_div(ventas_sim, toneladas_sim), safe_div(ventas_sim, sacos_sim)],
+        ["Financieros", "Fijo opcional", c_fin_base, 1.0 if incluir_fin_sim else 0.0, fin_sim, safe_div(fin_sim, toneladas_sim), safe_div(fin_sim, sacos_sim)],
+        ["Impuestos base C IMP", "Fijo opcional", c_imp_base, 1.0 if incluir_imp_base_sim else 0.0, imp_base_sim, safe_div(imp_base_sim, toneladas_sim), safe_div(imp_base_sim, sacos_sim)],
+        ["Impuesto renta C IMP REN", "Fijo opcional", imp_renta_total, 1.0 if incluir_imp_renta else 0.0, imp_renta_sim, safe_div(imp_renta_sim, toneladas_sim), safe_div(imp_renta_sim, sacos_sim)],
+        ["Impuesto patrimonio C IMP PATR", "Fijo opcional", imp_patrimonio_total, 1.0 if incluir_imp_patrimonio else 0.0, imp_patr_sim, safe_div(imp_patr_sim, toneladas_sim), safe_div(imp_patr_sim, sacos_sim)],
+        ["Gastos extraordinarios", "Fijo opcional", gastos_extra, 1.0 if incluir_extra_sim else 0.0, extra_sim, safe_div(extra_sim, toneladas_sim), safe_div(extra_sim, sacos_sim)],
+    ], columns=["Concepto", "Driver", "Valor actual", "Factor / tasa", "Valor proyectado", "$/ton", "$/saco"])
+    dataframe_gerencial(simulacion_df)
+
+    col_a, col_b = st.columns([1.1, 1])
+    with col_a:
+        fig = px.bar(
+            simulacion_df[simulacion_df["Valor proyectado"] != 0],
+            x="Concepto",
+            y="Valor proyectado",
+            title="Composición del costo proyectado",
+            color="Driver",
+        )
+        fig.update_layout(height=470, xaxis_tickangle=-35, margin=dict(b=135))
+        st.plotly_chart(fig, use_container_width=True)
+    with col_b:
+        sensibilidad_tons = []
+        if tons_base > 0:
+            for mult in [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0]:
+                t = tons_base * mult
+                f = safe_div(t, tons_base)
+                v = t * precio_ton_sim
+                cv = v * costo_ventas_pct_sim
+                if comportamiento_cif == "Variable por toneladas":
+                    cif = c_cif_emp * f
+                elif comportamiento_cif == "Semi-variable 50/50":
+                    cif = (c_cif_emp * 0.5) + (c_cif_emp * 0.5 * f)
+                else:
+                    cif = c_cif_emp
+                total = (c_mp_emp * f) + c_mo_emp + cif + adm_sim + cv + fin_sim + imp_base_sim + imp_renta_sim + imp_patr_sim + extra_sim
+                ct = safe_div(total, t)
+                po = safe_div(ct, 1 - margen_meta_sim)
+                sensibilidad_tons.append([t, f, ct, po, safe_div(po, sacos_por_ton)])
+        sens_tons_df = pd.DataFrame(sensibilidad_tons, columns=["Toneladas", "Factor", "Costo / ton", "Precio objetivo / ton", "Precio objetivo / saco"])
+        if sens_tons_df.empty:
+            st.info("No hay producción base suficiente para construir sensibilidad.")
+        else:
+            fig = px.line(
+                sens_tons_df,
+                x="Toneladas",
+                y=["Costo / ton", "Precio objetivo / ton"],
+                markers=True,
+                title="Sensibilidad costo/precio por toneladas",
+            )
+            fig.update_layout(height=470)
+            st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("### Sensibilidad tabular")
+    if 'sens_tons_df' in locals() and not sens_tons_df.empty:
+        dataframe_gerencial(sens_tons_df)
+
+    st.markdown("### Lectura gerencial")
+    st.markdown(
+        f"""
+        - La producción base del mes es **{fmt_number(tons_base, 2)} toneladas**, equivalente a **{fmt_number(und_emp, 0)} sacos**.
+        - La simulación proyecta **{fmt_number(toneladas_sim, 2)} toneladas**, con factor **{fmt_number(factor_prod, 2)}x**.
+        - La materia prima se extrapola por producción; administración y mano de obra de producción se mantienen fijas.
+        - Los costos de venta se calculan como **{fmt_pct(costo_ventas_pct_sim)}** sobre la nueva venta proyectada.
+        - C IMP REN está **{'incluido' if incluir_imp_renta else 'excluido'}** del costo; C IMP PATR está **{'incluido' if incluir_imp_patrimonio else 'excluido'}** del costo.
+        """
     )
