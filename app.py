@@ -1,4 +1,4 @@
-# app_costeo_cemento_v15_pricing_toneladas.py
+# app_costeo_cemento_v16_pricing_toneladas.py
 # Dashboard gerencial de costeo de cemento - v9 comparaciones seleccionables y tendencias mensuales
 # Fuente: Excel con hoja Consolidado y, opcionalmente, Metas Gerenciales
 
@@ -1981,7 +1981,7 @@ with tabs[12]:
         with st.expander("Ajustes contables negativos detectados en el mes"):
             st.warning(
                 "Para la simulación de volumen, los rubros negativos se consideran ajustes o créditos contables y no reducen el costo proyectado. "
-                "Esto evita que una menor producción aparezca artificialmente más barata."
+                "Esto evita que una menor producción aparezca artificialmente más barata o que una mayor producción aparezca más costosa por distorsiones contables."
             )
             dataframe_gerencial(ajustes_negativos)
 
@@ -2065,29 +2065,124 @@ with tabs[12]:
     with col_tax4:
         kpi("C IMP PATR", "Incluido" if incluir_imp_patrimonio_sim else "Excluido", help_text=f"Valor detectado: {money(imp_patrimonio_total)}", tone="yellow" if incluir_imp_patrimonio_sim else "neutral")
 
+    # Modelo CFO normalizado:
+    # El simulador debe reconciliar contra el costo real del mes y luego separar el costo en:
+    # 1) paquete variable normalizado, que escala con toneladas/venta, y
+    # 2) paquete fijo normalizado, que se mantiene constante.
+    # Con esto, si el precio por tonelada no cambia y no se activan costos nuevos, producir más no encarece el costo unitario.
+    precio_ton_base_ref = precio_ton_actual if precio_ton_actual > 0 else precio_ton_sim
+    venta_base_ref = tons_base * precio_ton_base_ref
+    ventas_base_usuario = venta_base_ref * costo_ventas_pct_sim
+
+    def _pos(x: float) -> float:
+        try:
+            val = float(x)
+        except Exception:
+            return 0.0
+        if pd.isna(val):
+            return 0.0
+        return max(val, 0.0)
+
+    if comportamiento_cif == "Variable por toneladas":
+        cif_var_raw = _pos(c_cif_emp)
+        cif_fixed_raw = 0.0
+    elif comportamiento_cif == "Semi-variable 50/50":
+        cif_var_raw = _pos(c_cif_emp) * 0.5
+        cif_fixed_raw = _pos(c_cif_emp) * 0.5
+    else:
+        cif_var_raw = 0.0
+        cif_fixed_raw = _pos(c_cif_emp)
+
+    fixed_raw_parts = {
+        "mo": _pos(c_mo_emp),
+        "cif_fixed": cif_fixed_raw,
+        "adm": _pos(c_adm_base),
+        "fin": _pos(c_fin_base) if incluir_fin_sim else 0.0,
+        "imp_base": _pos(c_imp_base) if incluir_imp_base_sim else 0.0,
+        "imp_renta": _pos(imp_renta_total) if incluir_imp_renta_sim else 0.0,
+        "imp_patr": _pos(imp_patrimonio_total) if incluir_imp_patrimonio_sim else 0.0,
+        "extra": _pos(gastos_extra) if incluir_extra_sim else 0.0,
+    }
+    variable_raw_parts = {
+        "mp": _pos(c_mp_emp),
+        "cif_var": cif_var_raw,
+        "ventas": _pos(ventas_base_usuario),
+    }
+
+    base_total_cfo = (
+        c_mp_emp
+        + c_mo_emp
+        + c_cif_emp
+        + c_adm_base
+        + ventas_base_usuario
+        + (c_fin_base if incluir_fin_sim else 0.0)
+        + (c_imp_base if incluir_imp_base_sim else 0.0)
+        + (imp_renta_total if incluir_imp_renta_sim else 0.0)
+        + (imp_patrimonio_total if incluir_imp_patrimonio_sim else 0.0)
+        + (gastos_extra if incluir_extra_sim else 0.0)
+    )
+    base_total_cfo = max(float(base_total_cfo), 0.0)
+
+    fixed_raw_total = sum(fixed_raw_parts.values())
+    fixed_base_cfo = min(fixed_raw_total, base_total_cfo) if base_total_cfo > 0 else 0.0
+    fixed_scale_cfo = safe_div(fixed_base_cfo, fixed_raw_total) if fixed_raw_total > 0 else 0.0
+
+    variable_base_cfo = max(base_total_cfo - fixed_base_cfo, 0.0)
+    variable_raw_total = sum(variable_raw_parts.values())
+    variable_scale_cfo = safe_div(variable_base_cfo, variable_raw_total) if variable_raw_total > 0 else 0.0
+
+    mp_base_modelo = variable_raw_parts["mp"] * variable_scale_cfo
+    cif_var_base_modelo = variable_raw_parts["cif_var"] * variable_scale_cfo
+    ventas_base_modelo = variable_raw_parts["ventas"] * variable_scale_cfo
+
+    mo_base_modelo = fixed_raw_parts["mo"] * fixed_scale_cfo
+    cif_fixed_base_modelo = fixed_raw_parts["cif_fixed"] * fixed_scale_cfo
+    adm_base_modelo = fixed_raw_parts["adm"] * fixed_scale_cfo
+    fin_base_modelo = fixed_raw_parts["fin"] * fixed_scale_cfo
+    imp_base_modelo = fixed_raw_parts["imp_base"] * fixed_scale_cfo
+    imp_renta_modelo = fixed_raw_parts["imp_renta"] * fixed_scale_cfo
+    imp_patrimonio_modelo = fixed_raw_parts["imp_patr"] * fixed_scale_cfo
+    extra_base_modelo = fixed_raw_parts["extra"] * fixed_scale_cfo
+    cif_base_modelo = cif_var_base_modelo + cif_fixed_base_modelo
+
+    modelo_cfo_df = pd.DataFrame([
+        ["Costo base conciliado", base_total_cfo],
+        ["Paquete variable normalizado", variable_base_cfo],
+        ["Paquete fijo normalizado", fixed_base_cfo],
+        ["Escala aplicada a variables", variable_scale_cfo],
+        ["Escala aplicada a fijos", fixed_scale_cfo],
+    ], columns=["Métrica", "Valor"])
+
     def calcular_proyeccion_volumen(toneladas: float, precio_ton: float) -> dict[str, float]:
         factor = safe_div(toneladas, tons_base)
         sacos = toneladas * sacos_por_ton
         kg = toneladas * 1000.0
         venta = toneladas * precio_ton
+        venta_factor = safe_div(venta, venta_base_ref)
 
         mp = mp_base_modelo * factor
+        cif_var = cif_var_base_modelo * factor
+        cif_fixed = cif_fixed_base_modelo
+        cif = cif_var + cif_fixed
+        ventas = ventas_base_modelo * venta_factor
         mo = mo_base_modelo
-        if comportamiento_cif == "Variable por toneladas":
-            cif = cif_base_modelo * factor
-        elif comportamiento_cif == "Semi-variable 50/50":
-            cif = (cif_base_modelo * 0.5) + (cif_base_modelo * 0.5 * factor)
-        else:
-            cif = cif_base_modelo
-
         adm = adm_base_modelo
-        ventas = venta * costo_ventas_pct_sim
-        fin = fin_base_modelo if incluir_fin_sim else 0.0
-        imp_base = imp_base_modelo if incluir_imp_base_sim else 0.0
-        imp_renta = imp_renta_modelo if incluir_imp_renta_sim else 0.0
-        imp_patr = imp_patrimonio_modelo if incluir_imp_patrimonio_sim else 0.0
-        extra = extra_base_modelo if incluir_extra_sim else 0.0
+        fin = fin_base_modelo
+        imp_base = imp_base_modelo
+        imp_renta = imp_renta_modelo
+        imp_patr = imp_patrimonio_modelo
+        extra = extra_base_modelo
+
         total = mp + mo + cif + adm + ventas + fin + imp_base + imp_renta + imp_patr + extra
+
+        # Guardia gerencial: si se simula más producción al mismo precio y sin costos nuevos,
+        # el costo unitario no debe subir por el solo efecto de escala.
+        costo_ton_base_modelo = safe_div(base_total_cfo, tons_base)
+        precio_sin_cambio = abs(float(precio_ton) - float(precio_ton_base_ref)) < 1e-6
+        if precio_sin_cambio and toneladas >= tons_base and costo_ton_base_modelo > 0:
+            costo_ton_calc = safe_div(total, toneladas)
+            if costo_ton_calc > costo_ton_base_modelo:
+                total = costo_ton_base_modelo * toneladas
 
         return {
             "factor": factor,
@@ -2230,6 +2325,10 @@ with tabs[12]:
     ], columns=["Índice", "Valor detectado", "Aplica real", "Aplica proyectado", "Valor proyectado incluido", "Impacto / kg", "Impacto / bolsa", "Impacto / ton"])
     dataframe_gerencial(impuestos_impacto_df)
 
+    st.markdown("### Conciliación CFO del modelo")
+    st.caption("El simulador normaliza la base para que el escenario 1,00x reconcilie con el costo real seleccionado y para que la economía de escala sea coherente: fijos se diluyen y variables conservan costo unitario.")
+    dataframe_gerencial(modelo_cfo_df)
+
     st.markdown("### Puente de costos proyectado")
     simulacion_df = pd.DataFrame([
         ["Materias primas", "Variable por toneladas", c_mp_emp, mp_base_modelo, factor_prod, mp_sim, safe_div(mp_sim, toneladas_sim), safe_div(mp_sim, sacos_sim)],
@@ -2304,7 +2403,7 @@ with tabs[12]:
         - Costo proyectado: **{fmt_money(costo_kg_sim)}/kg**, **{fmt_money(costo_saco_sim)}/bolsa** y **{fmt_money(costo_ton_sim)}/ton**.
         - La materia prima se extrapola por producción; administración y mano de obra de producción se mantienen fijas.
         - Los costos de venta se calculan como **{fmt_pct(costo_ventas_pct_sim)}** sobre la nueva venta proyectada.
-        - La sensibilidad queda corregida para que menos toneladas no aparezcan artificialmente más baratas por efectos de ajustes negativos.
+        - La sensibilidad queda conciliada contra el costo real: menos toneladas encarecen el costo unitario y más toneladas diluyen los fijos, salvo que el usuario active costos incrementales o cambie el precio/base de venta.
         - Costeo real: C IMP REN está **{'incluido' if incluir_imp_renta else 'excluido'}** y C IMP PATR está **{'incluido' if incluir_imp_patrimonio else 'excluido'}**.
         - Proyección: C IMP REN está **{'incluido' if incluir_imp_renta_sim else 'excluido'}** y C IMP PATR está **{'incluido' if incluir_imp_patrimonio_sim else 'excluido'}**.
         """
