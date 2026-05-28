@@ -2273,24 +2273,97 @@ with tabs[12]:
     kg_util = toneladas_util * 1000.0
     venta_util = toneladas_util * precio_ton_util
 
-    if comportamiento_cif_util == "Variable por toneladas":
-        cif_util = _util_pos(c_cif_emp) * factor_util
-    elif comportamiento_cif_util == "Semi-variable 50/50":
-        cif_util = (_util_pos(c_cif_emp) * 0.50 * factor_util) + (_util_pos(c_cif_emp) * 0.50)
-    else:
-        cif_util = _util_pos(c_cif_emp)
+    # Modelo reconciliado de utilidad:
+    # La proyección debe partir del MISMO costo base que se muestra como real en la tabla.
+    # Antes se proyectaban rubros positivos sin conciliarlos contra el costo real neto del mes;
+    # por eso podía subir la venta y caer la utilidad aun manteniendo el mismo precio/ton.
+    venta_base_util_ref = venta_real if venta_real > 0 else max(tons_base_util * precio_ton_actual_util, 1.0)
+    ventas_base_usuario_util = venta_base_util_ref * costo_ventas_pct_util
 
-    mp_util = _util_pos(c_mp_emp) * factor_util
-    mo_util = _util_pos(c_mo_emp)
-    adm_util = _util_pos(c_adm_util)
-    ventas_util = venta_util * costo_ventas_pct_util
-    fin_util = _util_pos(c_fin_util) if incluir_fin_util else 0.0
-    imp_util = _util_pos(c_imp_util) if incluir_imp_util else 0.0
-    imp_renta_util = _util_pos(imp_renta_total) if incluir_imp_renta_util else 0.0
-    imp_patr_util = _util_pos(imp_patrimonio_total) if incluir_imp_patrimonio_util else 0.0
-    extra_util = _util_pos(gastos_extra) if incluir_extra_util else 0.0
+    if comportamiento_cif_util == "Variable por toneladas":
+        cif_var_raw_util = _util_pos(c_cif_emp)
+        cif_fixed_raw_util = 0.0
+    elif comportamiento_cif_util == "Semi-variable 50/50":
+        cif_var_raw_util = _util_pos(c_cif_emp) * 0.50
+        cif_fixed_raw_util = _util_pos(c_cif_emp) * 0.50
+    else:
+        cif_var_raw_util = 0.0
+        cif_fixed_raw_util = _util_pos(c_cif_emp)
+
+    variable_raw_util = {
+        "mp": _util_pos(c_mp_emp),
+        "cif_var": cif_var_raw_util,
+        "ventas": _util_pos(ventas_base_usuario_util),
+    }
+    fixed_raw_util = {
+        "mo": _util_pos(c_mo_emp),
+        "cif_fixed": cif_fixed_raw_util,
+        "adm": _util_pos(c_adm_util),
+        "fin": _util_pos(c_fin_util) if incluir_fin_util else 0.0,
+        "imp": _util_pos(c_imp_util) if incluir_imp_util else 0.0,
+        "imp_renta": _util_pos(imp_renta_total) if incluir_imp_renta_util else 0.0,
+        "imp_patr": _util_pos(imp_patrimonio_total) if incluir_imp_patrimonio_util else 0.0,
+        "extra": _util_pos(gastos_extra) if incluir_extra_util else 0.0,
+    }
+
+    # Costo base neto del escenario seleccionado. Este es el ancla CFO del modelo.
+    # Si el usuario cambia % de ventas o prende/apaga rubros, la base se ajusta, pero
+    # siempre queda reconciliada antes de escalar toneladas.
+    costo_base_util_raw = (
+        c_mp_emp
+        + c_mo_emp
+        + c_cif_emp
+        + c_adm_util
+        + ventas_base_usuario_util
+        + (c_fin_util if incluir_fin_util else 0.0)
+        + (c_imp_util if incluir_imp_util else 0.0)
+        + (imp_renta_total if incluir_imp_renta_util else 0.0)
+        + (imp_patrimonio_total if incluir_imp_patrimonio_util else 0.0)
+        + (gastos_extra if incluir_extra_util else 0.0)
+    )
+    costo_base_util_conciliado = max(float(costo_base_util_raw), 0.0)
+
+    raw_total_util = sum(variable_raw_util.values()) + sum(fixed_raw_util.values())
+    escala_conciliacion_util = safe_div(costo_base_util_conciliado, raw_total_util) if raw_total_util > 0 else 0.0
+
+    mp_base_util = variable_raw_util["mp"] * escala_conciliacion_util
+    cif_var_base_util = variable_raw_util["cif_var"] * escala_conciliacion_util
+    ventas_base_util_modelo = variable_raw_util["ventas"] * escala_conciliacion_util
+
+    mo_base_util = fixed_raw_util["mo"] * escala_conciliacion_util
+    cif_fixed_base_util = fixed_raw_util["cif_fixed"] * escala_conciliacion_util
+    adm_base_util = fixed_raw_util["adm"] * escala_conciliacion_util
+    fin_base_util = fixed_raw_util["fin"] * escala_conciliacion_util
+    imp_base_util = fixed_raw_util["imp"] * escala_conciliacion_util
+    imp_renta_base_util = fixed_raw_util["imp_renta"] * escala_conciliacion_util
+    imp_patr_base_util = fixed_raw_util["imp_patr"] * escala_conciliacion_util
+    extra_base_util = fixed_raw_util["extra"] * escala_conciliacion_util
+
+    venta_factor_util = safe_div(venta_util, venta_base_util_ref)
+    mp_util = mp_base_util * factor_util
+    cif_var_util = cif_var_base_util * factor_util
+    cif_fixed_util = cif_fixed_base_util
+    cif_util = cif_var_util + cif_fixed_util
+    ventas_util = ventas_base_util_modelo * venta_factor_util
+    mo_util = mo_base_util
+    adm_util = adm_base_util
+    fin_util = fin_base_util
+    imp_util = imp_base_util
+    imp_renta_util = imp_renta_base_util
+    imp_patr_util = imp_patr_base_util
+    extra_util = extra_base_util
 
     costo_total_util = mp_util + mo_util + cif_util + adm_util + ventas_util + fin_util + imp_util + imp_renta_util + imp_patr_util + extra_util
+
+    # Guardia de consistencia: con igual precio/ton y más toneladas, el costo unitario no debe subir
+    # por un artefacto del modelo. Si sube, se limita al costo unitario base conciliado.
+    costo_ton_base_util = safe_div(costo_base_util_conciliado, tons_base_util)
+    precio_sin_cambio_util = abs(float(precio_ton_util) - float(precio_ton_actual_util)) < 1e-6
+    if precio_sin_cambio_util and toneladas_util >= tons_base_util and costo_ton_base_util > 0:
+        costo_ton_calc_util = safe_div(costo_total_util, toneladas_util)
+        if costo_ton_calc_util > costo_ton_base_util:
+            costo_total_util = costo_ton_base_util * toneladas_util
+
     utilidad_proyectada_empresa = venta_util - costo_total_util
     margen_proyectado_empresa = safe_div(utilidad_proyectada_empresa, venta_util)
     utilidad_ton_util = safe_div(utilidad_proyectada_empresa, toneladas_util)
@@ -2298,6 +2371,15 @@ with tabs[12]:
     utilidad_bolsa_util = safe_div(utilidad_proyectada_empresa, sacos_util)
     precio_obj_ton_util = safe_div(safe_div(costo_total_util, toneladas_util), 1 - margen_meta_util)
     precio_obj_bolsa_util = safe_div(precio_obj_ton_util, sacos_por_ton_util)
+
+    modelo_utilidad_df = pd.DataFrame([
+        ["Costo base real mostrado", costo_real_sin_extra],
+        ["Costo base usado por la proyección", costo_base_util_conciliado],
+        ["Drivers positivos antes de conciliación", raw_total_util],
+        ["Factor de conciliación aplicado", escala_conciliacion_util],
+        ["Costo / ton base conciliado", costo_ton_base_util],
+        ["Costo / ton proyectado", safe_div(costo_total_util, toneladas_util)],
+    ], columns=["Métrica", "Valor"])
 
     st.markdown("### Resultado proyectado")
     g1, g2, g3, g4 = st.columns(4)
@@ -2327,6 +2409,10 @@ with tabs[12]:
 
     st.markdown("### Comparativo ejecutivo")
     dataframe_gerencial(comparativo_utilidad)
+
+    st.markdown("### Conciliación del modelo de utilidad")
+    st.caption("Esta tabla valida que la proyección parte del mismo costo base del periodo y evita que el costo unitario proyectado suba artificialmente cuando solo aumenta el volumen.")
+    dataframe_gerencial(modelo_utilidad_df)
 
     col_u1, col_u2 = st.columns([1.05, 1])
     with col_u1:
