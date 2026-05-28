@@ -1278,6 +1278,16 @@ margen_real = safe_div(utilidad_saco, precio_actual)
 brecha_precio = precio_actual - precio_obj_sin_extra
 brecha_margen = margen_real - margen_obj
 
+# Resultado empresa del periodo seleccionado
+venta_total_real = und_emp * precio_actual
+costo_total_real_sin_extra = costo_emp + costos_gastos
+costo_total_real_con_extra = costo_total_real_sin_extra + gastos_extra
+utilidad_total_real = venta_total_real - costo_total_real_sin_extra
+utilidad_total_real_con_extra = venta_total_real - costo_total_real_con_extra
+margen_total_real = safe_div(utilidad_total_real, venta_total_real)
+margen_total_real_con_extra = safe_div(utilidad_total_real_con_extra, venta_total_real)
+utilidad_total_real_ton = safe_div(utilidad_total_real, safe_div(kg_emp, 1000.0))
+
 # ------------------------------------------------------------
 # Variaciones relevantes a nivel de observación
 # ------------------------------------------------------------
@@ -1356,11 +1366,17 @@ def serie_mensual_kpis(df_in: pd.DataFrame) -> pd.DataFrame:
         cg = suma_indices(d, INDICES_GRANEL)
         kg_g = suma_obs(d, OBS_KG_GRANEL)
         gastos = suma_indices(d, INDICES_GASTOS_COMERCIALES)
+        gastos_extra_mes = float(d.loc[d["Prod_norm"].str.contains("GASTOS EXTRA", na=False), "Valor"].sum())
         precio = suma_obs(d, OBS_PRECIO_BOLSA)
         costo_saco = safe_div(ce, ug)
         costo_comercial = costo_saco + safe_div(gastos, ug)
         utilidad = precio - costo_comercial
-        margen = safe_div(utilidad, precio)
+        venta_total_mes = ug * precio
+        costo_comercial_total_mes = ce + gastos
+        costo_comercial_total_con_extra_mes = costo_comercial_total_mes + gastos_extra_mes
+        utilidad_empresa_mes = venta_total_mes - costo_comercial_total_mes
+        utilidad_empresa_con_extra_mes = venta_total_mes - costo_comercial_total_con_extra_mes
+        margen = safe_div(utilidad_empresa_mes, venta_total_mes)
         rows.append({
             "Ano": p.ano,
             "Mes": p.mes,
@@ -1374,7 +1390,14 @@ def serie_mensual_kpis(df_in: pd.DataFrame) -> pd.DataFrame:
             "Costo comercial / saco": costo_comercial,
             "Precio actual / saco": precio,
             "Utilidad / saco": utilidad,
+            "Venta total empresa": venta_total_mes,
+            "Costo comercial total": costo_comercial_total_mes,
+            "Gastos extraordinarios": gastos_extra_mes,
+            "Utilidad empresa": utilidad_empresa_mes,
+            "Utilidad empresa con extra": utilidad_empresa_con_extra_mes,
+            "Utilidad / ton": safe_div(utilidad_empresa_mes, safe_div(kg_e, 1000.0)),
             "Margen real": margen,
+            "Margen con extra": safe_div(utilidad_empresa_con_extra_mes, venta_total_mes),
             "Costo granel": cg,
             "Kg granel": kg_g,
             "Costo granel / kg": safe_div(cg, kg_g),
@@ -1387,7 +1410,7 @@ def serie_mensual_kpis(df_in: pd.DataFrame) -> pd.DataFrame:
 def texto_tendencia_kpis(kpis: pd.DataFrame, max_items: int = 8) -> str:
     if kpis is None or kpis.empty or len(kpis) < 3:
         return "No hay suficiente historia para evaluar tendencia. Se requieren al menos 3 meses cargados."
-    cols = ["Costo / saco", "Costo comercial / saco", "Precio actual / saco", "Utilidad / saco", "Margen real", "Costo granel / kg", "Gastos / saco", "UND producidas"]
+    cols = ["Utilidad empresa", "Utilidad empresa con extra", "Venta total empresa", "Costo comercial total", "Costo / saco", "Costo comercial / saco", "Precio actual / saco", "Utilidad / saco", "Margen real", "Costo granel / kg", "Gastos / saco", "UND producidas"]
     lineas = []
     for col in cols:
         if col not in kpis.columns:
@@ -1446,6 +1469,7 @@ tabs = st.tabs([
     "🎯 Metas / Exportar",
     "📐 Metodología",
     "🤖 Análisis IA",
+    "📊 Utilidad Empresa",
     "🧮 Simulador Toneladas",
 ])
 
@@ -1470,6 +1494,17 @@ with tabs[0]:
         kpi("Gastos asignados / saco", money(gastos_saco))
     with c4:
         kpi("Precio objetivo + IVA", money(precio_obj_sin_extra_iva))
+
+    st.markdown("### Resultado empresa del periodo")
+    e1, e2, e3, e4 = st.columns(4)
+    with e1:
+        kpi("Venta total del periodo", money(venta_total_real), help_text=f"{num(und_emp, 0)} bolsas · {num(safe_div(kg_emp, 1000.0), 2)} t")
+    with e2:
+        kpi("Costo total comercial", money(costo_total_real_sin_extra), help_text=f"Sin extraordinarios · {money(costo_total_saco_sin_extra)}/bolsa")
+    with e3:
+        kpi("Utilidad total del periodo", money(utilidad_total_real), help_text=f"Margen empresa: {pct(margen_total_real)}", tone="red" if utilidad_total_real < 0 else "green")
+    with e4:
+        kpi("Utilidad con extraordinarios", money(utilidad_total_real_con_extra), help_text=f"Margen: {pct(margen_total_real_con_extra)}", tone="red" if utilidad_total_real_con_extra < 0 else "green")
 
     st.markdown("### Alertas gerenciales")
     dataframe_gerencial(alertas_df)
@@ -1711,7 +1746,7 @@ with tabs[6]:
 
 with tabs[7]:
     st.subheader("Evolución mensual y microtendencias")
-    st.caption("Lectura longitudinal: gastos representativos, producción, costo unitario, precio y margen. Funciona mejor desde 3 meses cargados.")
+    st.caption("Lectura longitudinal: utilidad mensualizada, gastos representativos, producción, costo unitario, precio y margen. Funciona mejor desde 3 meses cargados.")
 
     if kpis_mensuales.empty or len(kpis_mensuales) < 2:
         st.info("Carga al menos dos meses para visualizar evolución. Con tres o más meses el análisis de tendencia gana potencia gerencial.")
@@ -1746,6 +1781,46 @@ with tabs[7]:
         fig.update_yaxes(tickformat=".1%")
         fig.update_layout(height=350, xaxis_tickangle=-35)
         st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("### Utilidad mensualizada de la empresa")
+        st.caption("Utilidad total por mes = venta total del mes - costo comercial total del mes. Respeta la activación de C IMP REN y C IMP PATR en la barra lateral.")
+        util_cols = ["Periodo", "Venta total empresa", "Costo comercial total", "Utilidad empresa", "Utilidad empresa con extra", "Utilidad / ton", "Margen real", "Margen con extra"]
+        util_mensual = kpis_mensuales[[c for c in util_cols if c in kpis_mensuales.columns]].copy()
+
+        u1, u2, u3, u4 = st.columns(4)
+        ultimo_util = kpis_mensuales.iloc[-1]
+        with u1:
+            kpi("Última utilidad mensual", money(ultimo_util.get("Utilidad empresa", 0)), help_text=str(ultimo_util.get("Periodo", "")), tone="red" if ultimo_util.get("Utilidad empresa", 0) < 0 else "green")
+        with u2:
+            kpi("Utilidad con extra", money(ultimo_util.get("Utilidad empresa con extra", 0)), help_text=str(ultimo_util.get("Periodo", "")), tone="red" if ultimo_util.get("Utilidad empresa con extra", 0) < 0 else "green")
+        with u3:
+            kpi("Utilidad / ton", money(ultimo_util.get("Utilidad / ton", 0)), help_text=str(ultimo_util.get("Periodo", "")), tone="red" if ultimo_util.get("Utilidad / ton", 0) < 0 else "green")
+        with u4:
+            kpi("Margen empresa", pct(ultimo_util.get("Margen real", 0)), help_text=str(ultimo_util.get("Periodo", "")), tone="red" if ultimo_util.get("Margen real", 0) < 0 else "green")
+
+        fig = px.bar(
+            kpis_mensuales,
+            x="Periodo",
+            y="Utilidad empresa",
+            title="Utilidad mensualizada de la empresa",
+            text="Utilidad empresa",
+        )
+        fig.update_traces(texttemplate="%{text:,.0f}", textposition="outside")
+        fig.add_hline(y=0, line_dash="dot", line_color="#94A3B8", line_width=1.2)
+        fig.update_layout(height=430, xaxis_tickangle=-35, margin=dict(l=30, r=30, t=70, b=110))
+        st.plotly_chart(fig, use_container_width=True)
+
+        util_long = kpis_mensuales.melt(
+            id_vars=["Periodo", "PeriodoOrden"],
+            value_vars=["Venta total empresa", "Costo comercial total", "Utilidad empresa"],
+            var_name="Métrica",
+            value_name="Valor",
+        ).sort_values("PeriodoOrden")
+        fig = px.line(util_long, x="Periodo", y="Valor", color="Métrica", markers=True, title="Venta, costo y utilidad total mensual")
+        fig.update_layout(height=430, xaxis_tickangle=-35)
+        st.plotly_chart(fig, use_container_width=True)
+
+        dataframe_gerencial(util_mensual)
 
         st.markdown("### Gastos/costos representativos por observación")
         top_obs_n = st.slider("Número de observaciones representativas", min_value=6, max_value=20, value=12, step=1, key="top_obs_evolucion")
@@ -2067,6 +2142,254 @@ with tabs[11]:
 
 
 with tabs[12]:
+    st.subheader("Utilidad de la empresa")
+    st.caption(
+        "Vista CFO: utilidad real del mes seleccionado y utilidad proyectada por toneladas. "
+        "La utilidad real usa el costeo comercial activo, incluyendo o excluyendo C IMP REN y C IMP PATR según la barra lateral."
+    )
+
+    # Utilidad real del mes seleccionado
+    venta_real = venta_total_real
+    costo_real_sin_extra = costo_total_real_sin_extra
+    costo_real_con_extra = costo_total_real_con_extra
+    utilidad_real_sin_extra = utilidad_total_real
+    utilidad_real_con_extra = utilidad_total_real_con_extra
+    margen_real_empresa = margen_total_real
+    margen_real_empresa_con_extra = margen_total_real_con_extra
+    tons_base_util = safe_div(kg_emp, 1000.0)
+    sacos_por_ton_util = 20.0
+    precio_ton_actual_util = precio_actual * sacos_por_ton_util
+
+    st.markdown("### Resultado real del mes")
+    r1, r2, r3, r4 = st.columns(4)
+    with r1:
+        kpi("Venta total real", money(venta_real), help_text=f"{num(und_emp, 0)} bolsas · {num(tons_base_util, 2)} t")
+    with r2:
+        kpi("Utilidad real empresa", money(utilidad_real_sin_extra), help_text=f"Por bolsa: {money(utilidad_saco)}", tone="red" if utilidad_real_sin_extra < 0 else "green")
+    with r3:
+        kpi("Margen real empresa", pct(margen_real_empresa), tone="red" if margen_real_empresa < 0 else "green")
+    with r4:
+        kpi("Utilidad con extraordinarios", money(utilidad_real_con_extra), help_text=f"Margen: {pct(margen_real_empresa_con_extra)}", tone="red" if utilidad_real_con_extra < 0 else "green")
+
+    utilidad_real_unitaria = pd.DataFrame([
+        ["Venta real", venta_real, safe_div(venta_real, tons_base_util), safe_div(venta_real, kg_emp), safe_div(venta_real, und_emp)],
+        ["Costo comercial real sin extraordinarios", costo_real_sin_extra, safe_div(costo_real_sin_extra, tons_base_util), safe_div(costo_real_sin_extra, kg_emp), safe_div(costo_real_sin_extra, und_emp)],
+        ["Utilidad real sin extraordinarios", utilidad_real_sin_extra, safe_div(utilidad_real_sin_extra, tons_base_util), safe_div(utilidad_real_sin_extra, kg_emp), safe_div(utilidad_real_sin_extra, und_emp)],
+        ["Utilidad real con extraordinarios", utilidad_real_con_extra, safe_div(utilidad_real_con_extra, tons_base_util), safe_div(utilidad_real_con_extra, kg_emp), safe_div(utilidad_real_con_extra, und_emp)],
+    ], columns=["Concepto", "Total empresa", "$/ton", "$/kg", "$/bolsa"])
+    dataframe_gerencial(utilidad_real_unitaria)
+
+    st.markdown("### Proyección por toneladas")
+    st.caption("Modelo ejecutivo: materias primas escalan con toneladas; mano de obra de producción y administración quedan fijas; costos de venta escalan con la venta proyectada.")
+
+    c_adm_util = suma_indices(df_mes, ["C MO ADM", "C CIF ADM"])
+    c_ventas_util = suma_indices(df_mes, ["C MO VEN", "C CIF VEN"])
+    c_fin_util = suma_indices(df_mes, ["C FIN"])
+    c_imp_util = suma_indices(df_mes, ["C IMP"])
+
+    def _util_pos(value: float) -> float:
+        try:
+            x = float(value)
+        except Exception:
+            return 0.0
+        if pd.isna(x):
+            return 0.0
+        return max(x, 0.0)
+
+    venta_real_ref = venta_real if venta_real > 0 else 1.0
+    costo_ventas_pct_util_base = safe_div(_util_pos(c_ventas_util), venta_real_ref)
+
+    p1, p2, p3, p4 = st.columns(4)
+    with p1:
+        toneladas_util = st.number_input(
+            "Toneladas proyectadas",
+            min_value=0.0,
+            value=float(tons_base_util if tons_base_util > 0 else 1.0),
+            step=10.0,
+            format="%.2f",
+            key="util_toneladas_proyectadas",
+        )
+    with p2:
+        precio_ton_util = st.number_input(
+            "Precio venta / tonelada antes IVA",
+            min_value=0.0,
+            value=float(precio_ton_actual_util if precio_ton_actual_util > 0 else 0.0),
+            step=1000.0,
+            format="%.2f",
+            key="util_precio_tonelada",
+        )
+    with p3:
+        margen_meta_util = st.number_input(
+            "Margen meta referencia",
+            min_value=0.0,
+            max_value=0.95,
+            value=float(margen_obj if margen_obj > 0 else 0.15),
+            step=0.01,
+            format="%.2f",
+            key="util_margen_meta",
+        )
+    with p4:
+        costo_ventas_pct_util = st.number_input(
+            "Costo ventas / venta",
+            min_value=0.0,
+            max_value=1.0,
+            value=float(costo_ventas_pct_util_base if costo_ventas_pct_util_base > 0 else 0.0),
+            step=0.005,
+            format="%.3f",
+            key="util_costo_ventas_pct",
+        )
+
+    q1, q2, q3, q4 = st.columns(4)
+    with q1:
+        comportamiento_cif_util = st.selectbox(
+            "CIF producción proyectado",
+            ["Variable por toneladas", "Fijo", "Semi-variable 50/50"],
+            index=0,
+            key="util_cif_behavior",
+        )
+    with q2:
+        incluir_fin_util = st.checkbox("Incluir C FIN", value=True, key="util_incluir_fin")
+    with q3:
+        incluir_imp_util = st.checkbox("Incluir C IMP", value=True, key="util_incluir_imp")
+    with q4:
+        incluir_extra_util = st.checkbox("Incluir extraordinarios", value=False, key="util_incluir_extra")
+
+    t1, t2 = st.columns(2)
+    with t1:
+        incluir_imp_renta_util = st.checkbox(
+            "Incluir C IMP REN en proyección",
+            value=bool(incluir_imp_renta),
+            key="util_incluir_imp_renta",
+        )
+    with t2:
+        incluir_imp_patrimonio_util = st.checkbox(
+            "Incluir C IMP PATR en proyección",
+            value=bool(incluir_imp_patrimonio),
+            key="util_incluir_imp_patrimonio",
+        )
+
+    factor_util = safe_div(toneladas_util, tons_base_util)
+    sacos_util = toneladas_util * sacos_por_ton_util
+    kg_util = toneladas_util * 1000.0
+    venta_util = toneladas_util * precio_ton_util
+
+    if comportamiento_cif_util == "Variable por toneladas":
+        cif_util = _util_pos(c_cif_emp) * factor_util
+    elif comportamiento_cif_util == "Semi-variable 50/50":
+        cif_util = (_util_pos(c_cif_emp) * 0.50 * factor_util) + (_util_pos(c_cif_emp) * 0.50)
+    else:
+        cif_util = _util_pos(c_cif_emp)
+
+    mp_util = _util_pos(c_mp_emp) * factor_util
+    mo_util = _util_pos(c_mo_emp)
+    adm_util = _util_pos(c_adm_util)
+    ventas_util = venta_util * costo_ventas_pct_util
+    fin_util = _util_pos(c_fin_util) if incluir_fin_util else 0.0
+    imp_util = _util_pos(c_imp_util) if incluir_imp_util else 0.0
+    imp_renta_util = _util_pos(imp_renta_total) if incluir_imp_renta_util else 0.0
+    imp_patr_util = _util_pos(imp_patrimonio_total) if incluir_imp_patrimonio_util else 0.0
+    extra_util = _util_pos(gastos_extra) if incluir_extra_util else 0.0
+
+    costo_total_util = mp_util + mo_util + cif_util + adm_util + ventas_util + fin_util + imp_util + imp_renta_util + imp_patr_util + extra_util
+    utilidad_proyectada_empresa = venta_util - costo_total_util
+    margen_proyectado_empresa = safe_div(utilidad_proyectada_empresa, venta_util)
+    utilidad_ton_util = safe_div(utilidad_proyectada_empresa, toneladas_util)
+    utilidad_kg_util = safe_div(utilidad_proyectada_empresa, kg_util)
+    utilidad_bolsa_util = safe_div(utilidad_proyectada_empresa, sacos_util)
+    precio_obj_ton_util = safe_div(safe_div(costo_total_util, toneladas_util), 1 - margen_meta_util)
+    precio_obj_bolsa_util = safe_div(precio_obj_ton_util, sacos_por_ton_util)
+
+    st.markdown("### Resultado proyectado")
+    g1, g2, g3, g4 = st.columns(4)
+    with g1:
+        kpi("Venta proyectada", money(venta_util), help_text=f"{num(sacos_util, 0)} bolsas · {num(toneladas_util, 2)} t")
+    with g2:
+        kpi("Costo total proyectado", money(costo_total_util), help_text=f"Costo/ton: {money(safe_div(costo_total_util, toneladas_util))}")
+    with g3:
+        kpi("Utilidad proyectada empresa", money(utilidad_proyectada_empresa), help_text=f"Por bolsa: {money(utilidad_bolsa_util)}", tone="red" if utilidad_proyectada_empresa < 0 else "green")
+    with g4:
+        kpi("Margen proyectado", pct(margen_proyectado_empresa), tone="red" if margen_proyectado_empresa < 0 else "green")
+
+    g5, g6, g7, g8 = st.columns(4)
+    with g5:
+        kpi("Utilidad proyectada / ton", money(utilidad_ton_util), tone="red" if utilidad_ton_util < 0 else "green")
+    with g6:
+        kpi("Utilidad proyectada / kg", money(utilidad_kg_util), tone="red" if utilidad_kg_util < 0 else "green")
+    with g7:
+        kpi("Precio objetivo / ton", money(precio_obj_ton_util), help_text=f"Margen meta: {pct(margen_meta_util)}")
+    with g8:
+        kpi("Precio objetivo / bolsa", money(precio_obj_bolsa_util), help_text=f"+ IVA: {money(precio_obj_bolsa_util * (1 + iva))}")
+
+    comparativo_utilidad = pd.DataFrame([
+        ["Real mes seleccionado", tons_base_util, und_emp, venta_real, costo_real_sin_extra, utilidad_real_sin_extra, margen_real_empresa, safe_div(utilidad_real_sin_extra, tons_base_util), safe_div(utilidad_real_sin_extra, kg_emp), safe_div(utilidad_real_sin_extra, und_emp)],
+        ["Proyectado por toneladas", toneladas_util, sacos_util, venta_util, costo_total_util, utilidad_proyectada_empresa, margen_proyectado_empresa, utilidad_ton_util, utilidad_kg_util, utilidad_bolsa_util],
+    ], columns=["Escenario", "Toneladas", "Bolsas 50 kg", "Venta total", "Costo total", "Utilidad empresa", "Margen", "Utilidad / ton", "Utilidad / kg", "Utilidad / bolsa"])
+
+    st.markdown("### Comparativo ejecutivo")
+    dataframe_gerencial(comparativo_utilidad)
+
+    col_u1, col_u2 = st.columns([1.05, 1])
+    with col_u1:
+        barras_utilidad = comparativo_utilidad.melt(
+            id_vars=["Escenario"],
+            value_vars=["Venta total", "Costo total", "Utilidad empresa"],
+            var_name="Métrica",
+            value_name="Valor",
+        )
+        fig = px.bar(
+            barras_utilidad,
+            x="Escenario",
+            y="Valor",
+            color="Métrica",
+            barmode="group",
+            title="Venta, costo y utilidad · real vs proyectado",
+        )
+        fig.update_layout(height=430, margin=dict(l=30, r=30, t=70, b=90))
+        st.plotly_chart(fig, use_container_width=True)
+    with col_u2:
+        utilidad_unitaria_chart = pd.DataFrame([
+            ["Real", safe_div(utilidad_real_sin_extra, tons_base_util), safe_div(utilidad_real_sin_extra, und_emp)],
+            ["Proyectado", utilidad_ton_util, utilidad_bolsa_util],
+        ], columns=["Escenario", "Utilidad / ton", "Utilidad / bolsa"])
+        fig = px.bar(
+            utilidad_unitaria_chart.melt(id_vars="Escenario", var_name="Métrica", value_name="Valor"),
+            x="Escenario",
+            y="Valor",
+            color="Métrica",
+            barmode="group",
+            title="Utilidad unitaria · tonelada y bolsa",
+        )
+        fig.update_layout(height=430, margin=dict(l=30, r=30, t=70, b=90))
+        st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("### Puente de costo usado en la proyección")
+    puente_utilidad = pd.DataFrame([
+        ["Materias primas", "Variable por toneladas", mp_util, safe_div(mp_util, toneladas_util), safe_div(mp_util, sacos_util)],
+        ["Mano de obra producción", "Fijo", mo_util, safe_div(mo_util, toneladas_util), safe_div(mo_util, sacos_util)],
+        ["CIF producción", comportamiento_cif_util, cif_util, safe_div(cif_util, toneladas_util), safe_div(cif_util, sacos_util)],
+        ["Administración", "Fijo", adm_util, safe_div(adm_util, toneladas_util), safe_div(adm_util, sacos_util)],
+        ["Costos de venta", "% sobre venta proyectada", ventas_util, safe_div(ventas_util, toneladas_util), safe_div(ventas_util, sacos_util)],
+        ["Financieros", "Fijo opcional", fin_util, safe_div(fin_util, toneladas_util), safe_div(fin_util, sacos_util)],
+        ["Impuestos base C IMP", "Fijo opcional", imp_util, safe_div(imp_util, toneladas_util), safe_div(imp_util, sacos_util)],
+        ["Impuesto renta C IMP REN", "Fijo opcional", imp_renta_util, safe_div(imp_renta_util, toneladas_util), safe_div(imp_renta_util, sacos_util)],
+        ["Impuesto patrimonio C IMP PATR", "Fijo opcional", imp_patr_util, safe_div(imp_patr_util, toneladas_util), safe_div(imp_patr_util, sacos_util)],
+        ["Gastos extraordinarios", "Fijo opcional", extra_util, safe_div(extra_util, toneladas_util), safe_div(extra_util, sacos_util)],
+        ["Total costo proyectado", "Suma", costo_total_util, safe_div(costo_total_util, toneladas_util), safe_div(costo_total_util, sacos_util)],
+    ], columns=["Concepto", "Driver", "Valor proyectado", "$/ton", "$/bolsa"])
+    dataframe_gerencial(puente_utilidad)
+
+    st.markdown("### Lectura gerencial")
+    st.markdown(
+        f"""
+        - La utilidad real de la empresa en **{periodo.etiqueta}** es **{fmt_money(utilidad_real_sin_extra)}** antes de extraordinarios y **{fmt_money(utilidad_real_con_extra)}** incluyendo extraordinarios.
+        - La proyección con **{fmt_number(toneladas_util, 2)} toneladas** genera utilidad estimada de **{fmt_money(utilidad_proyectada_empresa)}**, equivalente a **{fmt_money(utilidad_bolsa_util)} por bolsa**.
+        - El precio de equilibrio proyectado es **{fmt_money(safe_div(costo_total_util, toneladas_util))}/ton**; para el margen meta seleccionado se requiere **{fmt_money(precio_obj_ton_util)}/ton**.
+        - C IMP REN está **{'incluido' if incluir_imp_renta_util else 'excluido'}** en la proyección y C IMP PATR está **{'incluido' if incluir_imp_patrimonio_util else 'excluido'}**.
+        """
+    )
+
+
+with tabs[13]:
     st.subheader("Simulador de precios por toneladas producidas")
     st.caption(
         "Modelo aprobado: materias primas escalan con producción; administración y mano de obra de producción permanecen constantes; "
