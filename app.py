@@ -219,10 +219,17 @@ h1,h2,h3,h4 { font-family:'Sora',sans-serif !important; color:var(--text-pri) !i
 }
 .kpi-value {
     font-family:'Space Mono',monospace;
-    font-size:clamp(1.05rem,1.45vw,1.62rem);
-    font-weight:700; letter-spacing:-0.025em; line-height:1.1;
+    font-size:clamp(0.96rem,1.18vw,1.34rem);
+    font-weight:700; letter-spacing:-0.03em; line-height:1.08;
     font-variant-numeric:tabular-nums;
+    white-space:normal;
+    overflow-wrap:anywhere;
+    word-break:break-word;
+    max-width:100%;
 }
+.kpi-value.kpi-value-md { font-size:clamp(0.90rem,1.08vw,1.22rem); }
+.kpi-value.kpi-value-sm { font-size:clamp(0.82rem,0.98vw,1.08rem); }
+.kpi-value.kpi-value-xs { font-size:clamp(0.74rem,0.90vw,0.96rem); }
 .kpi-green  .kpi-value { color:#2DBD6E; }
 .kpi-yellow .kpi-value { color:#F59E0B; }
 .kpi-red    .kpi-value { color:#FF4059; }
@@ -621,9 +628,9 @@ def money(v: float) -> str:
     return f"${v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-def num(v: float, decimals: int = 0) -> str:
+def num(v: float, decimals: int = 2) -> str:
     if v is None or pd.isna(v):
-        return "0"
+        return f"{0:,.{decimals}f}".replace(",", "X").replace(".", ",").replace("X", ".")
     return f"{v:,.{decimals}f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
@@ -672,6 +679,19 @@ def _tone_from_text(label: str, value: str, delta: str | None = None) -> str:
     return "neutral"
 
 
+def _kpi_value_size_class(value: str) -> str:
+    txt = str(value or "")
+    compact = txt.replace(" ", "")
+    n = len(compact)
+    if n >= 22:
+        return "kpi-value-xs"
+    if n >= 18:
+        return "kpi-value-sm"
+    if n >= 14:
+        return "kpi-value-md"
+    return ""
+
+
 def kpi(label: str, value: str, delta: str | None = None, help_text: str | None = None, tone: str | None = None):
     """Tarjeta KPI con semáforo controlado, sin etiquetas HTML visibles y con fuente más balanceada."""
     tone = tone or _tone_from_text(label, value, delta)
@@ -679,6 +699,7 @@ def kpi(label: str, value: str, delta: str | None = None, help_text: str | None 
 
     label_html = escape(str(label))
     value_html = escape(str(value))
+    value_cls = _kpi_value_size_class(value)
     delta_html = f'<div class="kpi-delta">{escape(str(delta))}</div>' if delta else ""
     help_html = f'<div class="kpi-help">{escape(str(help_text))}</div>' if help_text else ""
 
@@ -686,7 +707,7 @@ def kpi(label: str, value: str, delta: str | None = None, help_text: str | None 
         f'<div class="kpi-card kpi-{tone}">'
         f'<div>'
         f'<div class="kpi-label">{label_html}</div>'
-        f'<div class="kpi-value" title="{value_html}">{value_html}</div>'
+        f'<div class="kpi-value {value_cls}" title="{value_html}">{value_html}</div>'
         f'</div>'
         f'<div>{delta_html}{help_html}</div>'
         f'</div>',
@@ -698,7 +719,7 @@ def kpi(label: str, value: str, delta: str | None = None, help_text: str | None 
 # Formato gerencial de tablas
 # ------------------------------------------------------------
 
-def fmt_number(v: object, decimals: int = 0) -> str:
+def fmt_number(v: object, decimals: int = 2) -> str:
     if v is None or pd.isna(v):
         return ""
     try:
@@ -741,8 +762,6 @@ def format_df_gerencial(df_in: pd.DataFrame):
         elif any(k in col_txt for k in ["VALOR", "COSTO", "PRECIO", "BRECHA", "IMPACTO", "AHORRO", "UTILIDAD", "GASTO", "VARIACION $"]):
             fmt[col] = fmt_money
         elif any(k in col_txt for k in ["ANO", "MESNRO", "FILAS"]):
-            fmt[col] = lambda x: fmt_number(x, 0)
-        elif any(k in col_txt for k in ["KG", "UND", "SACOS"]):
             fmt[col] = lambda x: fmt_number(x, 0)
         else:
             fmt[col] = lambda x: fmt_number(x, 2)
@@ -1932,7 +1951,7 @@ with tabs[0]:
                               {escape(str(row.get('Producto','')))}
                             </div>
                             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;color:var(--text-sec);font-size:.82rem;">
-                              <div>Presentación</div><div style="text-align:right;font-weight:800;">{fmt_number(row.get('Kg bolsa',0),1)} kg</div>
+                              <div>Presentación</div><div style="text-align:right;font-weight:800;">{fmt_number(row.get('Kg bolsa',0),2)} kg</div>
                               <div>Toneladas</div><div style="text-align:right;font-weight:800;">{fmt_number(row.get('Toneladas',0),2)}</div>
                               <div>Precio / bolsa</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Precio / bolsa',0))}</div>
                               <div>Costo / bolsa</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Costo total / bolsa',0))}</div>
@@ -3292,6 +3311,7 @@ with tabs[14]:
                 "Mix %": st.column_config.NumberColumn("Mix %", min_value=0.0, max_value=100.0, step=1.0, format="%.2f"),
                 "Precio escenario / ton": st.column_config.NumberColumn("Precio / ton", min_value=0.0, step=1000.0, format="$ %.2f"),
                 "Costo escenario / ton": st.column_config.NumberColumn("Costo / ton", min_value=0.0, step=1000.0, format="$ %.2f"),
+                "Kg bolsa": st.column_config.NumberColumn("Kg bolsa", min_value=0.0, step=0.01, format="%.2f"),
                 "Margen": st.column_config.NumberColumn("Margen base", format="%.2f"),
             },
             disabled=["Producto", "Nombre corto", "Kg bolsa", "Margen"],
