@@ -3746,12 +3746,12 @@ with tabs[15]:
             id_vars=["Nombre corto"],
             value_vars=["Bolsas producidas", "Bolsas vendidas", "Bolsas no vendidas"],
             var_name="Métrica",
-            value_name="Bolsas",
+            value_name="Cantidad bolsas",
         )
         fig = px.bar(
             pv_df,
             x="Nombre corto",
-            y="Bolsas",
+            y="Cantidad bolsas",
             color="Métrica",
             barmode="group",
             title="Bolsas producidas, vendidas y no vendidas",
