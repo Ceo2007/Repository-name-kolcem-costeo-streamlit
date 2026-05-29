@@ -1885,15 +1885,26 @@ def calcular_resumen_producto(
     precio_ton_p = precio_kg_p * 1000.0
 
     venta_total_p = und_vendida_p * precio_bolsa_p
-    costo_total_comercial_p = costo_emp_p + gastos_p
-    costo_total_saco_p = safe_div(costo_total_comercial_p, und_emp_p)
-    costo_total_kg_p = safe_div(costo_total_comercial_p, kg_emp_p)
+
+    # Costeo industrial/comercial de lo producido.
+    costo_produccion_total_p = costo_emp_p + gastos_p
+    costo_total_saco_p = safe_div(costo_produccion_total_p, und_emp_p)
+    costo_total_kg_p = safe_div(costo_produccion_total_p, kg_emp_p)
     costo_total_ton_p = costo_total_kg_p * 1000.0
 
-    utilidad_total_p = venta_total_p - costo_total_comercial_p
-    utilidad_saco_p = safe_div(utilidad_total_p, und_emp_p)
-    utilidad_kg_p = safe_div(utilidad_total_p, kg_emp_p)
-    utilidad_ton_p = safe_div(utilidad_total_p, toneladas_p)
+    # Resultado real vendido: si no hay venta, no hay precio promedio aplicado ni ingreso.
+    # La producción no vendida queda como costo/inventario económico, no como venta ficticia.
+    costo_ventas_real_p = und_vendida_p * costo_total_saco_p
+    bolsas_no_vendidas_p = max(und_emp_p - und_vendida_p, 0.0)
+    costo_inventario_no_vendido_p = bolsas_no_vendidas_p * costo_total_saco_p
+
+    venta_valorizada_produccion_p = und_emp_p * precio_bolsa_p
+    utilidad_valorizada_produccion_p = venta_valorizada_produccion_p - costo_produccion_total_p
+
+    utilidad_total_p = venta_total_p - costo_ventas_real_p
+    utilidad_saco_p = safe_div(utilidad_total_p, und_vendida_p)
+    utilidad_kg_p = safe_div(utilidad_total_p, kg_vendido_p)
+    utilidad_ton_p = safe_div(utilidad_total_p, toneladas_vendidas_p)
     margen_p = safe_div(utilidad_total_p, venta_total_p)
 
     estado = "OK"
@@ -1936,10 +1947,16 @@ def calcular_resumen_producto(
         "Precio / kg": precio_kg_p,
         "Precio / ton": precio_ton_p,
         "Venta total": venta_total_p,
-        "Costo total comercial": costo_total_comercial_p,
+        "Costo producción total": costo_produccion_total_p,
+        "Costo ventas real": costo_ventas_real_p,
+        "Costo total comercial": costo_ventas_real_p,
         "Costo total / bolsa": costo_total_saco_p,
         "Costo total / kg": costo_total_kg_p,
         "Costo total / ton": costo_total_ton_p,
+        "Bolsas no vendidas": bolsas_no_vendidas_p,
+        "Costo inventario no vendido": costo_inventario_no_vendido_p,
+        "Venta valorizada producción": venta_valorizada_produccion_p,
+        "Utilidad valorizada producción": utilidad_valorizada_produccion_p,
         "Utilidad empresa": utilidad_total_p,
         "Utilidad / bolsa": utilidad_saco_p,
         "Utilidad / kg": utilidad_kg_p,
@@ -1994,6 +2011,7 @@ tabs = st.tabs([
     "📊 Utilidad Empresa",
     "🧮 Simulador Toneladas",
     "🧩 Escenarios Portafolio",
+    "🏗️ Costeo Ambos Productos",
 ])
 
 with tabs[0]:
@@ -2067,7 +2085,7 @@ with tabs[0]:
         columnas_resumen = [
             "Producto", "Obs precio bolsa", "Kg bolsa", "Toneladas", "Bolsas producidas", "Bolsas vendidas", "Toneladas vendidas", "Precio / bolsa", "Precio / ton",
             "Costo total / bolsa", "Costo total / ton", "Utilidad / bolsa", "Utilidad / ton",
-            "Venta total", "Costo total comercial", "Utilidad empresa", "Margen", "Participación venta", "Participación utilidad", "Estado",
+            "Venta total", "Costo ventas real", "Utilidad empresa", "Margen", "Costo producción total", "Bolsas no vendidas", "Costo inventario no vendido", "Participación venta", "Participación utilidad", "Estado",
         ]
         dataframe_gerencial(resumen_productos_df[[c for c in columnas_resumen if c in resumen_productos_df.columns]])
 
@@ -2154,50 +2172,160 @@ with tabs[0]:
 
 
 with tabs[1]:
-    st.subheader("Precio de venta, margen y escenarios")
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        kpi("Precio actual antes IVA", money(precio_actual))
-    with c2:
-        kpi("Precio objetivo sin extra", money(precio_obj_sin_extra))
-    with c3:
-        kpi("Brecha vs objetivo", money(brecha_precio))
-    with c4:
-        kpi("Diferencia margen", pct(brecha_margen))
+    st.subheader("Precio de venta, margen y escenarios por producto")
+    st.caption(
+        "Vista multi-producto: uso general y estructural se muestran en el mismo informe. "
+        "Si un producto no tiene bolsas vendidas, su precio promedio aplicado queda en cero."
+    )
 
-    margenes = [m / 100 for m in range(5, 31, 5)]
+    precio_productos_df = resumen_productos_periodo(
+        df_consolidado_completo,
+        productos_disponibles,
+        periodo,
+        incluir_imp_renta,
+        incluir_imp_patrimonio,
+    )
 
-    sensibilidad = []
-    for m in margenes:
-        p_sin = safe_div(costo_total_saco_sin_extra, 1 - m)
-        p_con = safe_div(costo_total_saco_con_extra, 1 - m)
-        utilidad_esperada = p_sin - costo_total_saco_sin_extra
-        sensibilidad.append([
-            "Base",
-            m,
-            p_sin,
-            p_sin * (1 + iva),
-            p_con,
-            p_con * (1 + iva),
-            p_sin - precio_actual,
-            utilidad_esperada,
-        ])
-    sens_df = pd.DataFrame(sensibilidad, columns=[
-        "Tipo", "Margen objetivo", "Precio sin extra antes IVA", "Precio sin extra con IVA",
-        "Precio con extra antes IVA", "Precio con extra con IVA", "Brecha vs precio actual", "Utilidad esperada / saco"
-    ])
+    if precio_productos_df.empty:
+        st.info("No hay productos disponibles para analizar precio y margen.")
+    else:
+        precio_productos_df = precio_productos_df.copy()
+        precio_productos_df["Precio objetivo / bolsa"] = precio_productos_df["Costo total / bolsa"].apply(
+            lambda x: safe_div(x, 1 - margen_obj)
+        )
+        precio_productos_df["Precio objetivo + IVA / bolsa"] = precio_productos_df["Precio objetivo / bolsa"] * (1 + iva)
+        precio_productos_df["Brecha vs objetivo"] = precio_productos_df["Precio / bolsa"] - precio_productos_df["Precio objetivo / bolsa"]
+        precio_productos_df["Diferencia margen"] = precio_productos_df["Margen"] - margen_obj
+        precio_productos_df["Sin ventas"] = precio_productos_df["Bolsas vendidas"].apply(lambda x: "Sí" if float(x or 0) <= 0 else "No")
 
-    col_a, col_b = st.columns([1.25, 1])
-    with col_a:
-        st.markdown("### Precio sugerido de venta por margen")
-        st.caption("Tabla base de 5% a 30%. Margen calculado sobre precio de venta.")
-        dataframe_gerencial(sens_df)
-    with col_b:
-        fig = px.line(sens_df, x="Margen objetivo", y="Precio sin extra antes IVA", markers=True, title="Curva de precio objetivo antes de IVA")
-        fig.update_yaxes(tickprefix="$")
-        fig.update_traces(line_color="#E8650A", line_width=2.5, marker_color="#F5A623", marker_size=8)
-        fig.add_hline(y=precio_actual, line_dash="dot", line_color="#FF4059", annotation_text="Precio actual", annotation_font_color="#FF4059", line_width=1.5)
+        venta_total_precio = float(precio_productos_df["Venta total"].sum())
+        costo_total_precio = float(precio_productos_df["Costo total comercial"].sum())
+        utilidad_total_precio = float(precio_productos_df["Utilidad empresa"].sum())
+        margen_total_precio = safe_div(utilidad_total_precio, venta_total_precio)
+        productos_sin_venta = int((pd.to_numeric(precio_productos_df["Bolsas vendidas"], errors="coerce").fillna(0) <= 0).sum())
+
+        k1, k2, k3, k4 = st.columns(4)
+        with k1:
+            kpi("Venta real total", money(venta_total_precio), help_text="Calculada con bolsas vendidas")
+        with k2:
+            kpi("Costo total productos", money(costo_total_precio), help_text="Costo comercial del periodo")
+        with k3:
+            kpi("Utilidad total productos", money(utilidad_total_precio), tone="red" if utilidad_total_precio < 0 else "green")
+        with k4:
+            kpi("Productos sin venta", num(productos_sin_venta, 2), help_text="Precio promedio aplicado = $0,00", tone="yellow" if productos_sin_venta else "green")
+
+        st.markdown("### Precio, margen y brecha por producto")
+        productos_rows = precio_productos_df.to_dict("records")
+        for start_i in range(0, len(productos_rows), 2):
+            cols = st.columns(min(2, len(productos_rows[start_i:start_i + 2])))
+            for col, row in zip(cols, productos_rows[start_i:start_i + 2]):
+                with col:
+                    sin_venta = float(row.get("Bolsas vendidas", 0) or 0) <= 0
+                    tone = "yellow" if sin_venta else ("red" if float(row.get("Brecha vs objetivo", 0) or 0) < 0 else "green")
+                    st.markdown(
+                        f"""
+                        <div class="kpi-card kpi-{tone}" style="min-height:255px;">
+                          <div>
+                            <div class="kpi-label">{escape(str(row.get('Nombre corto', row.get('Producto', 'Producto'))))}</div>
+                            <div style="font-family:'Sora',sans-serif;font-size:1.02rem;font-weight:800;color:var(--text-pri);line-height:1.15;margin-bottom:10px;">
+                              {escape(str(row.get('Producto','')))}
+                            </div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;color:var(--text-sec);font-size:.82rem;">
+                              <div>Presentación</div><div style="text-align:right;font-weight:800;">{fmt_number(row.get('Kg bolsa',0),2)} kg</div>
+                              <div>Bolsas vendidas</div><div style="text-align:right;font-weight:800;">{fmt_number(row.get('Bolsas vendidas',0),2)}</div>
+                              <div>Precio / bolsa</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Precio / bolsa',0))}</div>
+                              <div>Precio / ton</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Precio / ton',0))}</div>
+                              <div>Costo total / bolsa</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Costo total / bolsa',0))}</div>
+                              <div>Precio objetivo / bolsa</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Precio objetivo / bolsa',0))}</div>
+                              <div>Brecha / bolsa</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Brecha vs objetivo',0))}</div>
+                              <div>Margen</div><div style="text-align:right;font-weight:800;">{fmt_pct(row.get('Margen',0))}</div>
+                            </div>
+                          </div>
+                          <div class="kpi-delta">{"Sin ventas: precio promedio aplicado = $0,00" if sin_venta else "Venta total: " + fmt_money(row.get('Venta total',0))}</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+        columnas_precio = [
+            "Producto", "Obs precio bolsa", "Kg bolsa", "Bolsas vendidas", "Toneladas vendidas",
+            "Precio / bolsa", "Precio / ton", "Costo total / bolsa", "Costo total / ton",
+            "Precio objetivo / bolsa", "Precio objetivo + IVA / bolsa",
+            "Brecha vs objetivo", "Margen", "Diferencia margen", "Venta total", "Costo ventas real", "Utilidad empresa", "Costo producción total", "Costo inventario no vendido", "Sin ventas", "Estado",
+        ]
+        dataframe_gerencial(precio_productos_df[[c for c in columnas_precio if c in precio_productos_df.columns]])
+
+        st.markdown("### Precio sugerido de venta por margen · todos los productos")
+        st.caption("Tabla base de 5% a 30%. Cada producto usa su propia presentación, costo y precio real de venta.")
+
+        margenes = [m / 100 for m in range(5, 31, 5)]
+        sensibilidad_multi = []
+        for _, row in precio_productos_df.iterrows():
+            for m in margenes:
+                costo_bolsa = float(row.get("Costo total / bolsa", 0) or 0)
+                precio_obj_bolsa = safe_div(costo_bolsa, 1 - m)
+                sensibilidad_multi.append([
+                    row.get("Producto", ""),
+                    row.get("Nombre corto", ""),
+                    row.get("Kg bolsa", 0),
+                    row.get("Bolsas vendidas", 0),
+                    row.get("Precio / bolsa", 0),
+                    row.get("Precio / ton", 0),
+                    m,
+                    precio_obj_bolsa,
+                    precio_obj_bolsa * (1 + iva),
+                    safe_div(precio_obj_bolsa, float(row.get("Kg bolsa", 0) or 0)) * 1000.0,
+                    precio_obj_bolsa - float(row.get("Precio / bolsa", 0) or 0),
+                ])
+        sens_df = pd.DataFrame(
+            sensibilidad_multi,
+            columns=[
+                "Producto", "Nombre corto", "Kg bolsa", "Bolsas vendidas", "Precio actual / bolsa",
+                "Precio actual / ton", "Margen objetivo", "Precio objetivo / bolsa",
+                "Precio objetivo con IVA / bolsa", "Precio objetivo / ton", "Brecha vs precio actual",
+            ],
+        )
+
+        col_a, col_b = st.columns([1.25, 1])
+        with col_a:
+            dataframe_gerencial(sens_df)
+        with col_b:
+            fig = px.line(
+                sens_df,
+                x="Margen objetivo",
+                y="Precio objetivo / bolsa",
+                color="Nombre corto",
+                markers=True,
+                title="Curva de precio objetivo antes de IVA por producto",
+            )
+            fig.update_yaxes(tickprefix="$")
+            fig.update_layout(height=430)
+            st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("### Comparativo precio, costo y utilidad por tonelada")
+        comp_cols = ["Precio / ton", "Costo total / ton", "Utilidad / ton"]
+        comp_df = precio_productos_df.melt(
+            id_vars=["Nombre corto"],
+            value_vars=[c for c in comp_cols if c in precio_productos_df.columns],
+            var_name="Métrica",
+            value_name="Valor",
+        )
+        fig = px.bar(
+            comp_df,
+            x="Nombre corto",
+            y="Valor",
+            color="Métrica",
+            barmode="group",
+            title="Precio, costo y utilidad por tonelada · todos los productos",
+        )
+        fig.update_layout(height=420)
         st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("### Detalle operativo del producto seleccionado")
+        st.info(
+            f"Producto seleccionado en la barra lateral: **{producto_cfg.nombre}**. "
+            "Las pestañas de granel, empacado, variaciones, metodología y simulador profundizan en este producto específico."
+        )
 
 with tabs[2]:
     st.subheader(f"Granel {PRODUCTO_CORTO} - {periodo.etiqueta}")
@@ -3514,5 +3642,147 @@ with tabs[14]:
             - Producto que más utilidad aporta: **{mayor_utilidad['Producto']}** con **{fmt_money(mayor_utilidad['Utilidad escenario'])}**.
             - Utilidad total escenario: **{fmt_money(utilidad_esc)}**, contra utilidad base de **{fmt_money(base_utilidad_total)}**.
             - La arquitectura queda abierta: un nuevo producto entra al escenario al agregarlo como activo en **Parametros Productos** y cargar sus datos en Consolidado.
+            """
+        )
+
+
+with tabs[15]:
+    st.subheader(f"Costeo integral de ambos productos - {periodo.etiqueta}")
+    st.caption(
+        "Esta es la vista de costeo CFO: separa producción, venta real e inventario económico. "
+        "Cada producto se calcula con su granel propio, su empacado, su presentación, sus gastos y sus ventas reales."
+    )
+
+    costeo_df = resumen_productos_periodo(
+        df_consolidado_completo,
+        productos_disponibles,
+        periodo,
+        incluir_imp_renta,
+        incluir_imp_patrimonio,
+    )
+
+    if costeo_df.empty:
+        st.info("No hay productos para costear en el periodo seleccionado.")
+    else:
+        venta_real_total = float(costeo_df["Venta total"].sum())
+        costo_ventas_total = float(costeo_df["Costo ventas real"].sum())
+        utilidad_real_total = float(costeo_df["Utilidad empresa"].sum())
+        costo_produccion_total = float(costeo_df["Costo producción total"].sum())
+        inventario_no_vendido_total = float(costeo_df["Costo inventario no vendido"].sum())
+        margen_real_total = safe_div(utilidad_real_total, venta_real_total)
+
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            kpi("Venta real empresa", money(venta_real_total), help_text="Solo bolsas vendidas")
+        with c2:
+            kpi("Costo de ventas real", money(costo_ventas_total), help_text="Costo unitario × bolsas vendidas")
+        with c3:
+            kpi("Utilidad real empresa", money(utilidad_real_total), help_text=f"Margen: {pct(margen_real_total)}", tone="red" if utilidad_real_total < 0 else "green")
+        with c4:
+            kpi("Costo producido no vendido", money(inventario_no_vendido_total), help_text="Inventario económico del periodo", tone="yellow" if inventario_no_vendido_total > 0 else "green")
+
+        c5, c6, c7, c8 = st.columns(4)
+        with c5:
+            kpi("Costo producción total", money(costo_produccion_total), help_text="Costo de ambos productos producidos")
+        with c6:
+            kpi("Ton producidas", num(float(costeo_df["Toneladas"].sum()), 2))
+        with c7:
+            kpi("Ton vendidas", num(float(costeo_df["Toneladas vendidas"].sum()), 2))
+        with c8:
+            kpi("Bolsas no vendidas", num(float(costeo_df["Bolsas no vendidas"].sum()), 2))
+
+        st.markdown("### Cadena de costeo por producto")
+        rows = costeo_df.to_dict("records")
+        for start_i in range(0, len(rows), 2):
+            cols = st.columns(min(2, len(rows[start_i:start_i + 2])))
+            for col, row in zip(cols, rows[start_i:start_i + 2]):
+                with col:
+                    sin_venta = float(row.get("Bolsas vendidas", 0) or 0) <= 0
+                    tone = "yellow" if sin_venta else ("red" if float(row.get("Utilidad empresa", 0) or 0) < 0 else "green")
+                    st.markdown(
+                        f"""
+                        <div class="kpi-card kpi-{tone}" style="min-height:340px;">
+                          <div>
+                            <div class="kpi-label">{escape(str(row.get('Nombre corto', row.get('Producto', 'Producto'))))}</div>
+                            <div style="font-family:'Sora',sans-serif;font-size:1.04rem;font-weight:800;color:var(--text-pri);line-height:1.15;margin-bottom:12px;">
+                              {escape(str(row.get('Producto','')))}
+                            </div>
+                            <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:7px 16px;color:var(--text-sec);font-size:.82rem;">
+                              <div>Presentación</div><div style="text-align:right;font-weight:800;">{fmt_number(row.get('Kg bolsa',0),2)} kg</div>
+                              <div>Costo granel / kg</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Costo granel / kg',0))}</div>
+                              <div>Costo empacado / bolsa</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Costo empacado / bolsa',0))}</div>
+                              <div>Gastos / bolsa</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Gastos / bolsa',0))}</div>
+                              <div>Costo total / bolsa</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Costo total / bolsa',0))}</div>
+                              <div>Bolsas producidas</div><div style="text-align:right;font-weight:800;">{fmt_number(row.get('Bolsas producidas',0),2)}</div>
+                              <div>Bolsas vendidas</div><div style="text-align:right;font-weight:800;">{fmt_number(row.get('Bolsas vendidas',0),2)}</div>
+                              <div>Bolsas no vendidas</div><div style="text-align:right;font-weight:800;">{fmt_number(row.get('Bolsas no vendidas',0),2)}</div>
+                              <div>Precio promedio / bolsa</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Precio / bolsa',0))}</div>
+                              <div>Venta real</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Venta total',0))}</div>
+                              <div>Costo ventas real</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Costo ventas real',0))}</div>
+                              <div>Utilidad real</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Utilidad empresa',0))}</div>
+                              <div>Margen real</div><div style="text-align:right;font-weight:800;">{fmt_pct(row.get('Margen',0))}</div>
+                            </div>
+                          </div>
+                          <div class="kpi-delta">{"Sin ventas: no se reconoce precio promedio ni ingreso" if sin_venta else "Producto con venta real registrada"}</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+        st.markdown("### Tabla CFO de costeo por producto")
+        cols_costeo = [
+            "Producto", "Kg bolsa", "Bolsas producidas", "Bolsas vendidas", "Bolsas no vendidas",
+            "Toneladas", "Toneladas vendidas", "Costo granel", "Costo granel / kg",
+            "Costo empacado", "Costo empacado / bolsa", "Gastos asignables", "Gastos / bolsa",
+            "Costo producción total", "Costo total / bolsa", "Costo total / ton",
+            "Precio / bolsa", "Precio / ton", "Venta total", "Costo ventas real",
+            "Utilidad empresa", "Utilidad / bolsa", "Utilidad / ton", "Margen",
+            "Costo inventario no vendido", "Obs precio bolsa", "Estado",
+        ]
+        dataframe_gerencial(costeo_df[[c for c in cols_costeo if c in costeo_df.columns]])
+
+        st.markdown("### Producción vs venta")
+        pv_df = costeo_df.melt(
+            id_vars=["Nombre corto"],
+            value_vars=["Bolsas producidas", "Bolsas vendidas", "Bolsas no vendidas"],
+            var_name="Métrica",
+            value_name="Bolsas",
+        )
+        fig = px.bar(
+            pv_df,
+            x="Nombre corto",
+            y="Bolsas",
+            color="Métrica",
+            barmode="group",
+            title="Bolsas producidas, vendidas y no vendidas",
+        )
+        fig.update_layout(height=420)
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("### Resultado económico real por producto")
+        eco_df = costeo_df.melt(
+            id_vars=["Nombre corto"],
+            value_vars=["Venta total", "Costo ventas real", "Utilidad empresa", "Costo inventario no vendido"],
+            var_name="Métrica",
+            value_name="Valor",
+        )
+        fig = px.bar(
+            eco_df,
+            x="Nombre corto",
+            y="Valor",
+            color="Métrica",
+            barmode="group",
+            title="Venta, costo vendido, utilidad e inventario económico",
+        )
+        fig.update_layout(height=440)
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("### Lectura gerencial")
+        st.markdown(
+            """
+            - **Costo producción total** mide lo que costó fabricar cada producto en el periodo.
+            - **Costo ventas real** mide únicamente el costo asociado a las bolsas efectivamente vendidas.
+            - **Costo producido no vendido** no debe confundirse con pérdida comercial: es inventario económico o costo pendiente de monetizar.
+            - Si un producto tiene producción pero cero ventas, el precio promedio aplicado es cero y la venta real es cero.
             """
         )
