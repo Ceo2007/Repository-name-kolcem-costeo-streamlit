@@ -1057,15 +1057,52 @@ def filtro_periodo(df: pd.DataFrame, periodo: Periodo) -> pd.DataFrame:
     return df[(df["Ano"] == periodo.ano) & (df["MesNro"] == periodo.mes_nro)].copy()
 
 
+# ------------------------------------------------------------
+# Compatibilidad de índices históricos vs nuevos
+# ------------------------------------------------------------
+# El Excel puede traer UG con nomenclatura histórica (C MP UG, C MP EMP)
+# o con nomenclatura nueva segmentada (C MP UG GRL, C MP UG EMP).
+# La app debe leer ambas sin obligar a reprogramar cada mes.
+_INDEX_ALIAS_GROUPS = [
+    ["C MP UG", "C MP UG GRL"],
+    ["C MO UG", "C MO UG GRL"],
+    ["C CIF UG", "C CIF UG GRL"],
+    ["QI MP UG", "QI MP UG GRL"],
+    ["C MP EMP", "C MP UG EMP"],
+    ["C MO EMP", "C MO UG EMP"],
+    ["C CIF EMP", "C CIF UG EMP"],
+    ["QI MP EMP", "QI MP UG EMP"],
+    ["C MO VEN", "C MO UG VEN"],
+    ["C CIF VEN", "C CIF UG VEN"],
+]
+_INDEX_ALIAS_MAP: dict[str, set[str]] = {}
+for _group in _INDEX_ALIAS_GROUPS:
+    _norm_group = {norm_text(x) for x in _group}
+    for _idx in _norm_group:
+        _INDEX_ALIAS_MAP.setdefault(_idx, set()).update(_norm_group)
+
+
+def expandir_indices(indices: Iterable[str]) -> set[str]:
+    """Expande índices parametrizados para soportar nomenclatura vieja y nueva."""
+    out: set[str] = set()
+    for idx in indices or []:
+        key = norm_text(idx)
+        if not key:
+            continue
+        out.add(key)
+        out.update(_INDEX_ALIAS_MAP.get(key, set()))
+    return out
+
+
 def suma_indices(df: pd.DataFrame, indices: Iterable[str]) -> float:
-    idx = {norm_text(x) for x in indices}
+    idx = expandir_indices(indices)
     return float(df.loc[df["Indice_norm"].isin(idx), "Valor"].sum())
 
 
 def suma_obs(df: pd.DataFrame, obs: str, indices: Optional[Iterable[str]] = None) -> float:
     base = df[df["Obs_norm"] == norm_text(obs)]
     if indices is not None:
-        idx = {norm_text(x) for x in indices}
+        idx = expandir_indices(indices)
         base = base[base["Indice_norm"].isin(idx)]
     return float(base["Valor"].sum())
 
@@ -1169,7 +1206,7 @@ def detalle_gastos_comerciales(df_in: pd.DataFrame) -> pd.DataFrame:
         base = base[~base["Indice_norm"].isin({norm_text("TOTAL"), norm_text("INFO")})].copy()
         base = base[~base["Obs_norm"].isin(OBS_GASTOS_SUBTOTALES)].copy()
         return base
-    idx = {norm_text(i) for i in INDICES_GASTOS_COMERCIALES}
+    idx = expandir_indices(INDICES_GASTOS_COMERCIALES)
     return df_in[df_in["Indice_norm"].isin(idx)].copy()
 
 
@@ -1247,7 +1284,7 @@ def resumen_gastos_comerciales(df_in: pd.DataFrame) -> pd.DataFrame:
 
 
 def resumen_por_observacion(df: pd.DataFrame, indices: Iterable[str]) -> pd.DataFrame:
-    idx = {norm_text(x) for x in indices}
+    idx = expandir_indices(indices)
     base = df[df["Indice_norm"].isin(idx)].copy()
     out = base.groupby("Observacion", as_index=False)["Valor"].sum().sort_values("Valor", ascending=False)
     total = float(out["Valor"].sum()) if not out.empty else 0.0
@@ -1677,7 +1714,7 @@ def periodo_label_df(df_in: pd.DataFrame) -> pd.DataFrame:
 
 
 def serie_mensual_observaciones(df_in: pd.DataFrame, indices: list[str], top_n_obs: int = 12) -> tuple[pd.DataFrame, list[str]]:
-    idx_norm = {norm_text(x) for x in indices}
+    idx_norm = expandir_indices(indices)
     base = df_in[df_in["Indice_norm"].isin(idx_norm)].copy()
     base = periodo_label_df(base)
     ranking = base.groupby("Observacion", as_index=False)["Valor"].sum().sort_values("Valor", ascending=False)
