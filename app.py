@@ -1,5 +1,5 @@
 # app_costeo_cemento_v16_pricing_toneladas.py
-# Dashboard gerencial de costeo de cemento - v9 comparaciones seleccionables y tendencias mensuales
+# Dashboard gerencial de costeo de cemento - v31 multi-producto + tendencias clave depuradas
 # Fuente: Excel con hoja Consolidado y, opcionalmente, Metas Gerenciales
 
 from __future__ import annotations
@@ -219,10 +219,17 @@ h1,h2,h3,h4 { font-family:'Sora',sans-serif !important; color:var(--text-pri) !i
 }
 .kpi-value {
     font-family:'Space Mono',monospace;
-    font-size:clamp(1.05rem,1.45vw,1.62rem);
-    font-weight:700; letter-spacing:-0.025em; line-height:1.1;
+    font-size:clamp(0.96rem,1.18vw,1.34rem);
+    font-weight:700; letter-spacing:-0.03em; line-height:1.08;
     font-variant-numeric:tabular-nums;
+    white-space:normal;
+    overflow-wrap:anywhere;
+    word-break:break-word;
+    max-width:100%;
 }
+.kpi-value.kpi-value-md { font-size:clamp(0.90rem,1.08vw,1.22rem); }
+.kpi-value.kpi-value-sm { font-size:clamp(0.82rem,0.98vw,1.08rem); }
+.kpi-value.kpi-value-xs { font-size:clamp(0.74rem,0.90vw,0.96rem); }
 .kpi-green  .kpi-value { color:#2DBD6E; }
 .kpi-yellow .kpi-value { color:#F59E0B; }
 .kpi-red    .kpi-value { color:#FF4059; }
@@ -354,6 +361,221 @@ OBS_UND_EMPACADO = "UND PRODUCIDAS Q"
 OBS_CEMENTO_GRANEL_TRANSFERIDO = "CEMENTO A GRANEL DE USO GENERAL"
 OBS_PRECIO_BOLSA = "PRECIO PROMEDIO POR BOLSA 50 KG"
 
+
+@dataclass(frozen=True)
+class ProductoCosteo:
+    key: str
+    nombre: str
+    nombre_corto: str
+    granel_producto: str
+    empacado_producto: str
+    precio_producto: str
+    gastos_producto: str
+    utilidad_producto: str
+    peso_bolsa_kg: float
+    indices_granel: list[str]
+    indices_empacado: list[str]
+    indices_gastos_base: list[str]
+    indices_admin: list[str]
+    indices_ventas: list[str]
+    indices_fin: list[str]
+    indices_imp_base: list[str]
+    obs_cemento_transferido: str
+    obs_cantidad_vendida: str
+    obs_kg_granel: str = "KG PRODUCIDOS Q"
+    obs_und_empacado: str = "UND PRODUCIDAS Q"
+    obs_precio_bolsa: str = "PRECIO PROMEDIO POR BOLSA 50 KG"
+    modo_gastos: str = "indices"  # indices | subtotales_producto
+    obs_gastos_total: str = "GASTOS"
+    obs_admin: str = "GASTOS ADMINISTRATIVOS"
+    obs_ventas: str = "GASTOS DE VENTA"
+    obs_financiero: str = "GATOS FINANCIEROS|GASTOS FINANCIEROS"
+
+
+PRODUCTOS_COSTEO_DEFAULT: dict[str, ProductoCosteo] = {
+    "UG_50": ProductoCosteo(
+        key="UG_50",
+        nombre="Cemento UG empacado 50 kg",
+        nombre_corto="UG 50 kg",
+        granel_producto="Granel de Uso General (2841)",
+        empacado_producto="Empacado UG 50KG (2843)",
+        precio_producto="Precio Final",
+        gastos_producto="Gastos Administrativos y de Venta",
+        utilidad_producto="Utilidad Bruta por Kilo de Cemento Vendido",
+        peso_bolsa_kg=50.0,
+        indices_granel=["C MP UG", "C MO UG", "C CIF UG"],
+        indices_empacado=["C MP EMP", "C MO EMP", "C CIF EMP"],
+        indices_gastos_base=["C MO ADM", "C CIF ADM", "C MO VEN", "C CIF VEN", "C FIN", "C IMP"],
+        indices_admin=["C MO ADM", "C CIF ADM"],
+        indices_ventas=["C MO VEN", "C CIF VEN"],
+        indices_fin=["C FIN"],
+        indices_imp_base=["C IMP"],
+        obs_cemento_transferido="CEMENTO A GRANEL DE USO GENERAL",
+        obs_cantidad_vendida="CEMENTO KOLCEM UG 50 KG",
+        obs_kg_granel="KG PRODUCIDOS Q",
+        obs_und_empacado="UND PRODUCIDAS Q",
+        obs_precio_bolsa="PRECIO PROMEDIO POR BOLSA 50 KG",
+        modo_gastos="indices",
+    ),
+    "ART_42_5": ProductoCosteo(
+        key="ART_42_5",
+        nombre="Cemento ART estructural empacado 42.5 kg",
+        nombre_corto="ART 42.5 kg",
+        granel_producto="Cemento Granel ART (3645)",
+        empacado_producto="Cemento Empacado ART 42.5 (4223)",
+        precio_producto="Precio Final ART",
+        gastos_producto="Gastos Administrativos y de Venta ART",
+        utilidad_producto="Utilidad Bruta por Kilo de Cemento Vendido ART",
+        peso_bolsa_kg=42.5,
+        indices_granel=["C MP ART GRN", "C MO ART GRN", "C CIF ART GRN"],
+        indices_empacado=["C MP ART EMP", "C MO ART EMP", "C CIF ART EMP"],
+        indices_gastos_base=["C ADM Y VEN ART EMP", "C FIN"],
+        indices_admin=["C ADM Y VEN ART EMP"],
+        indices_ventas=["C ADM Y VEN ART EMP"],
+        indices_fin=["C FIN"],
+        indices_imp_base=[],
+        obs_cemento_transferido="CEMENTO A GRANEL ART USO ESTRUCTURAL",
+        obs_cantidad_vendida="CEMENTO KOLCEM ART 42.5 KG",
+        obs_kg_granel="KG PRODUCIDOS Q",
+        obs_und_empacado="UND PRODUCIDAS Q",
+        obs_precio_bolsa="PRECIO PROMEDIO POR BOLSA 42,5 KG",
+        modo_gastos="subtotales_producto",
+        obs_gastos_total="GASTOS",
+        obs_admin="GASTOS ADMINISTRATIVOS",
+        obs_ventas="GASTOS DE VENTA",
+        obs_financiero="GATOS FINANCIEROS|GASTOS FINANCIEROS",
+    ),
+}
+
+# Se reemplaza después de leer el Excel, si existe hoja "Parametros Productos".
+PRODUCTOS_COSTEO: dict[str, ProductoCosteo] = PRODUCTOS_COSTEO_DEFAULT.copy()
+
+
+def _split_param_list(value: object) -> list[str]:
+    if value is None or pd.isna(value):
+        return []
+    text = str(value).strip()
+    if not text:
+        return []
+    for sep in ["\n", ";", ","]:
+        text = text.replace(sep, "|")
+    return [x.strip() for x in text.split("|") if x and x.strip()]
+
+
+def _truthy_excel(value: object) -> bool:
+    txt = norm_text(value)
+    return txt in {"SI", "SÍ", "YES", "TRUE", "1", "ACTIVO", "X"}
+
+
+def _param_get(row: pd.Series, aliases: list[str], default: object = "") -> object:
+    col_map = {norm_text(c): c for c in row.index}
+    for alias in aliases:
+        c = col_map.get(norm_text(alias))
+        if c is not None:
+            val = row.get(c)
+            if val is not None and not (isinstance(val, float) and pd.isna(val)):
+                return val
+    return default
+
+
+def construir_productos_desde_parametros(parametros_df: pd.DataFrame) -> dict[str, ProductoCosteo]:
+    """Lee la hoja 'Parametros Productos' del Excel y construye el catálogo dinámico.
+
+    La fila queda bajo control del negocio: producto, presentación, índices, productos contables
+    y observaciones críticas. Si la hoja no existe o tiene errores, se conserva el catálogo
+    por defecto para no bloquear la operación.
+    """
+    if parametros_df is None or parametros_df.empty:
+        return {}
+
+    productos: dict[str, ProductoCosteo] = {}
+    for _, row in parametros_df.iterrows():
+        if not _truthy_excel(_param_get(row, ["Activo"], "Sí")):
+            continue
+        key = str(_param_get(row, ["Key", "ProductoKey", "Producto key"], "")).strip()
+        if not key:
+            continue
+        base = PRODUCTOS_COSTEO_DEFAULT.get(key)
+
+        def get_txt(aliases: list[str], attr: str | None = None, default: str = "") -> str:
+            fallback = getattr(base, attr, default) if base is not None and attr else default
+            return str(_param_get(row, aliases, fallback)).strip()
+
+        def get_list(aliases: list[str], attr: str | None = None) -> list[str]:
+            fallback = getattr(base, attr, []) if base is not None and attr else []
+            raw = _param_get(row, aliases, "|".join(fallback) if fallback else "")
+            parsed = _split_param_list(raw)
+            return parsed if parsed else list(fallback)
+
+        peso_raw = _param_get(row, ["Kg bolsa", "Peso bolsa kg", "Presentacion kg", "Presentación kg"], getattr(base, "peso_bolsa_kg", 50.0) if base else 50.0)
+        peso = parse_valor(peso_raw)
+        if peso <= 0:
+            peso = float(getattr(base, "peso_bolsa_kg", 50.0) if base else 50.0)
+
+        try:
+            productos[key] = ProductoCosteo(
+                key=key,
+                nombre=get_txt(["Producto dashboard", "Producto", "Nombre"], "nombre", key),
+                nombre_corto=get_txt(["Nombre corto", "Corto"], "nombre_corto", key),
+                granel_producto=get_txt(["Producto granel", "Producción granel", "Produccion granel"], "granel_producto"),
+                empacado_producto=get_txt(["Producto empacado", "Producción empacado", "Produccion empacado"], "empacado_producto"),
+                precio_producto=get_txt(["Producto precio", "Precio producto"], "precio_producto"),
+                gastos_producto=get_txt(["Producto gastos", "Gastos producto"], "gastos_producto"),
+                utilidad_producto=get_txt(["Producto utilidad", "Utilidad producto"], "utilidad_producto"),
+                peso_bolsa_kg=float(peso),
+                indices_granel=get_list(["Indices granel", "Índices granel"], "indices_granel"),
+                indices_empacado=get_list(["Indices empacado", "Índices empacado"], "indices_empacado"),
+                indices_gastos_base=get_list(["Indices gastos base", "Índices gastos base", "Indices gastos"], "indices_gastos_base"),
+                indices_admin=get_list(["Indices administración", "Indices administracion", "Índices administración", "Indices admin"], "indices_admin"),
+                indices_ventas=get_list(["Indices ventas", "Índices ventas"], "indices_ventas"),
+                indices_fin=get_list(["Indices financieros", "Índices financieros", "Indices fin"], "indices_fin"),
+                indices_imp_base=get_list(["Indices impuestos base", "Índices impuestos base", "Indices imp base"], "indices_imp_base"),
+                obs_cemento_transferido=get_txt(["Obs cemento transferido", "Observación cemento transferido", "Observacion cemento transferido"], "obs_cemento_transferido"),
+                obs_cantidad_vendida=get_txt(["Obs cantidad vendida", "Observación cantidad vendida", "Observacion cantidad vendida"], "obs_cantidad_vendida"),
+                obs_kg_granel=get_txt(["Obs kg granel", "Observación kg granel", "Observacion kg granel"], "obs_kg_granel", "KG PRODUCIDOS Q"),
+                obs_und_empacado=get_txt(["Obs und empacado", "Observación und empacado", "Observacion und empacado"], "obs_und_empacado", "UND PRODUCIDAS Q"),
+                obs_precio_bolsa=get_txt(["Obs precio bolsa", "Observación precio bolsa", "Observacion precio bolsa"], "obs_precio_bolsa", "PRECIO PROMEDIO POR BOLSA 50 KG"),
+                modo_gastos=get_txt(["Modo gastos", "Modo de gastos"], "modo_gastos", "indices"),
+                obs_gastos_total=get_txt(["Obs gastos total", "Observación gastos total", "Observacion gastos total"], "obs_gastos_total", "GASTOS"),
+                obs_admin=get_txt(["Obs administración", "Obs administracion", "Observación administración", "Observacion administracion"], "obs_admin", "GASTOS ADMINISTRATIVOS"),
+                obs_ventas=get_txt(["Obs ventas", "Observación ventas", "Observacion ventas"], "obs_ventas", "GASTOS DE VENTA"),
+                obs_financiero=get_txt(["Obs financiero", "Observación financiero", "Observacion financiero"], "obs_financiero", "GATOS FINANCIEROS|GASTOS FINANCIEROS"),
+            )
+        except Exception:
+            # Si una fila está mal, no se cae todo el dashboard.
+            continue
+    return productos
+
+
+def producto_disponible(df_in: pd.DataFrame, producto: ProductoCosteo) -> bool:
+    if df_in is None or df_in.empty or "Prod_norm" not in df_in.columns:
+        return False
+    prod_norm = df_in["Prod_norm"]
+    claves = [producto.granel_producto, producto.empacado_producto, producto.precio_producto, producto.gastos_producto]
+    claves_norm = {norm_text(x) for x in claves if str(x).strip()}
+    return bool(prod_norm.isin(claves_norm).any())
+
+
+def filtrar_producto_costeo(df_in: pd.DataFrame, producto: ProductoCosteo) -> pd.DataFrame:
+    """Filtra Consolidado al producto seleccionado sin perder precio, gastos ni extraordinarios.
+
+    La configuración viene de Excel. Esto evita mezclar cantidades, precios y costos entre
+    productos con nombres de observación repetidos, por ejemplo UND PRODUCIDAS Q.
+    """
+    if df_in is None or df_in.empty:
+        return df_in.copy()
+    claves = {
+        norm_text(producto.granel_producto),
+        norm_text(producto.empacado_producto),
+        norm_text(producto.precio_producto),
+        norm_text(producto.gastos_producto),
+        norm_text(producto.utilidad_producto),
+        norm_text("Gastos ExtraOrdinarios"),
+        norm_text("Cantidades Vendidas"),
+    }
+    claves = {x for x in claves if x}
+    return df_in[df_in["Prod_norm"].isin(claves)].copy()
+
 # ------------------------------------------------------------
 # Utilidades de texto, números y formato
 # ------------------------------------------------------------
@@ -406,9 +628,9 @@ def money(v: float) -> str:
     return f"${v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-def num(v: float, decimals: int = 0) -> str:
+def num(v: float, decimals: int = 2) -> str:
     if v is None or pd.isna(v):
-        return "0"
+        return f"{0:,.{decimals}f}".replace(",", "X").replace(".", ",").replace("X", ".")
     return f"{v:,.{decimals}f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
@@ -457,6 +679,19 @@ def _tone_from_text(label: str, value: str, delta: str | None = None) -> str:
     return "neutral"
 
 
+def _kpi_value_size_class(value: str) -> str:
+    txt = str(value or "")
+    compact = txt.replace(" ", "")
+    n = len(compact)
+    if n >= 22:
+        return "kpi-value-xs"
+    if n >= 18:
+        return "kpi-value-sm"
+    if n >= 14:
+        return "kpi-value-md"
+    return ""
+
+
 def kpi(label: str, value: str, delta: str | None = None, help_text: str | None = None, tone: str | None = None):
     """Tarjeta KPI con semáforo controlado, sin etiquetas HTML visibles y con fuente más balanceada."""
     tone = tone or _tone_from_text(label, value, delta)
@@ -464,6 +699,7 @@ def kpi(label: str, value: str, delta: str | None = None, help_text: str | None 
 
     label_html = escape(str(label))
     value_html = escape(str(value))
+    value_cls = _kpi_value_size_class(value)
     delta_html = f'<div class="kpi-delta">{escape(str(delta))}</div>' if delta else ""
     help_html = f'<div class="kpi-help">{escape(str(help_text))}</div>' if help_text else ""
 
@@ -471,7 +707,7 @@ def kpi(label: str, value: str, delta: str | None = None, help_text: str | None 
         f'<div class="kpi-card kpi-{tone}">'
         f'<div>'
         f'<div class="kpi-label">{label_html}</div>'
-        f'<div class="kpi-value" title="{value_html}">{value_html}</div>'
+        f'<div class="kpi-value {value_cls}" title="{value_html}">{value_html}</div>'
         f'</div>'
         f'<div>{delta_html}{help_html}</div>'
         f'</div>',
@@ -483,7 +719,7 @@ def kpi(label: str, value: str, delta: str | None = None, help_text: str | None 
 # Formato gerencial de tablas
 # ------------------------------------------------------------
 
-def fmt_number(v: object, decimals: int = 0) -> str:
+def fmt_number(v: object, decimals: int = 2) -> str:
     if v is None or pd.isna(v):
         return ""
     try:
@@ -526,8 +762,6 @@ def format_df_gerencial(df_in: pd.DataFrame):
         elif any(k in col_txt for k in ["VALOR", "COSTO", "PRECIO", "BRECHA", "IMPACTO", "AHORRO", "UTILIDAD", "GASTO", "VARIACION $"]):
             fmt[col] = fmt_money
         elif any(k in col_txt for k in ["ANO", "MESNRO", "FILAS"]):
-            fmt[col] = lambda x: fmt_number(x, 0)
-        elif any(k in col_txt for k in ["KG", "UND", "SACOS"]):
             fmt[col] = lambda x: fmt_number(x, 0)
         else:
             fmt[col] = lambda x: fmt_number(x, 2)
@@ -591,7 +825,7 @@ def construir_prompt_chatgpt(
     return f"""Actúa como CFO industrial y experto en costeo de producción de cemento.
 
 Contexto de negocio:
-- Producto vendido actualmente: cemento empacado UG 50 kg.
+- Producto vendido actualmente: {NOMBRE_PRODUCTO}.
 - Objetivo: maximizar rentabilidad sin sacrificar calidad, seguridad, continuidad operativa ni cumplimiento.
 - Base de análisis: costeo mensual desde Consolidado.
 - Mes analizado: {periodo.etiqueta}.
@@ -767,7 +1001,7 @@ def _build_consolidado_from_nuevo_mes(xls: pd.ExcelFile) -> pd.DataFrame:
     return pd.DataFrame(out_rows)
 
 @st.cache_data(show_spinner=False)
-def load_excel(uploaded_bytes: bytes) -> tuple[pd.DataFrame, pd.DataFrame, list[str]]:
+def load_excel(uploaded_bytes: bytes) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, list[str]]:
     xls = pd.ExcelFile(io.BytesIO(uploaded_bytes), engine="openpyxl")
     sheets = xls.sheet_names
     if "Consolidado" not in sheets:
@@ -786,7 +1020,18 @@ def load_excel(uploaded_bytes: bytes) -> tuple[pd.DataFrame, pd.DataFrame, list[
         metas = pd.read_excel(xls, sheet_name="Metas Gerenciales")
     else:
         metas = pd.DataFrame(columns=["KPI", "Producto", "Meta", "Unidad", "Vigente desde", "Comentario"])
-    return df, metas, sheets
+
+    parametros_productos = pd.DataFrame()
+    for sheet_producto in ["Parametros Productos", "Parámetros Productos", "Productos Dashboard", "Productos"]:
+        if sheet_producto in sheets:
+            # La tabla inicia en la fila 5 en la plantilla v20. Si no se reconoce, intenta lectura normal.
+            tmp = pd.read_excel(xls, sheet_name=sheet_producto, header=4)
+            if tmp.empty or "Key" not in [str(c) for c in tmp.columns]:
+                tmp = pd.read_excel(xls, sheet_name=sheet_producto)
+            parametros_productos = tmp.dropna(how="all").copy()
+            break
+
+    return df, metas, parametros_productos, sheets
 
 
 @dataclass
@@ -823,6 +1068,182 @@ def suma_obs(df: pd.DataFrame, obs: str, indices: Optional[Iterable[str]] = None
         idx = {norm_text(x) for x in indices}
         base = base[base["Indice_norm"].isin(idx)]
     return float(base["Valor"].sum())
+
+
+def _dedupe_textos(values: Iterable[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for val in values:
+        txt = str(val or "").strip()
+        if not txt:
+            continue
+        key = norm_text(txt)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(txt)
+    return out
+
+
+def _texto_peso_bolsa_para_obs(peso_bolsa_kg: float) -> str:
+    """Convierte 42.5 en '42,5' y 50.0 en '50' para observaciones de Excel."""
+    try:
+        peso = float(peso_bolsa_kg)
+    except Exception:
+        peso = 50.0
+    if abs(peso - round(peso)) < 1e-9:
+        return str(int(round(peso)))
+    txt = f"{peso:.2f}".rstrip("0").rstrip(".")
+    return txt.replace(".", ",")
+
+
+def obs_precio_canonica(peso_bolsa_kg: float) -> str:
+    return f"PRECIO PROMEDIO POR BOLSA {_texto_peso_bolsa_para_obs(peso_bolsa_kg)} KG"
+
+
+def normalizar_obs_precio_bolsa(obs_configurada: str, peso_bolsa_kg: float) -> str:
+    """Si un producto no es de 50 kg y trae la observación histórica de 50 kg, usa la presentación real."""
+    obs = str(obs_configurada or "").strip()
+    if not obs:
+        return obs_precio_canonica(peso_bolsa_kg)
+    try:
+        peso = float(peso_bolsa_kg or 0)
+    except Exception:
+        peso = 50.0
+    if abs(peso - 50.0) > 1e-6 and norm_text(obs) == norm_text("PRECIO PROMEDIO POR BOLSA 50 KG"):
+        return obs_precio_canonica(peso)
+    return obs
+
+
+def candidatos_obs_precio_bolsa(obs_configurada: str, peso_bolsa_kg: float) -> list[str]:
+    """Busca primero la observación correcta de la presentación y deja fallback histórico."""
+    canon = normalizar_obs_precio_bolsa(obs_configurada, peso_bolsa_kg)
+    peso_txt_coma = _texto_peso_bolsa_para_obs(peso_bolsa_kg)
+    peso_txt_punto = peso_txt_coma.replace(",", ".")
+    return _dedupe_textos([
+        canon,
+        f"PRECIO PROMEDIO POR BOLSA {peso_txt_punto} KG",
+        str(obs_configurada or "").strip(),
+        "PRECIO PROMEDIO POR BOLSA 50 KG",
+    ])
+
+
+def suma_obs_precio_bolsa(df: pd.DataFrame, obs_configurada: str, peso_bolsa_kg: float) -> tuple[float, str]:
+    """Retorna el primer precio encontrado para evitar duplicar si existen observaciones alias."""
+    for obs in candidatos_obs_precio_bolsa(obs_configurada, peso_bolsa_kg):
+        valor = suma_obs(df, obs)
+        if abs(valor) > 1e-12:
+            return valor, obs
+    canon = normalizar_obs_precio_bolsa(obs_configurada, peso_bolsa_kg)
+    return 0.0, canon
+
+
+
+OBS_GASTOS_SUBTOTALES = {
+    norm_text("GASTOS"),
+    norm_text("GASTOS ADMINISTRATIVOS"),
+    norm_text("GATOS FINANCIEROS"),
+    norm_text("GASTOS FINANCIEROS"),
+    norm_text("GASTOS DE VENTA"),
+    norm_text("PROVISIÓN IMPUESTOS DE RENTA"),
+    norm_text("DIFERENCIA EN CAMBIO NETA NO REALIZADA"),
+    norm_text("GASTOS ADMINISTRATIVOS, FINANCIEROS Y DE VTA UNITARIOS"),
+}
+
+
+def _producto_actual_es_art() -> bool:
+    """Compatibilidad histórica: ahora significa que el producto usa subtotales de gasto configurados en Excel."""
+    if not globals().get("producto_cfg"):
+        return False
+    modo = norm_text(getattr(producto_cfg, "modo_gastos", "indices"))
+    return modo in {"SUBTOTALES_PRODUCTO", "SUBTOTALES", "DETALLE_PRODUCTO", "PRODUCTO_SUBTOTALES"}
+
+
+def detalle_gastos_comerciales(df_in: pd.DataFrame) -> pd.DataFrame:
+    """Devuelve el detalle de gastos sin subtotales duplicados para el producto activo."""
+    if df_in is None or df_in.empty:
+        return pd.DataFrame(columns=df_in.columns if df_in is not None else [])
+    if _producto_actual_es_art():
+        prod_gasto = norm_text(producto_cfg.gastos_producto)
+        base = df_in[df_in["Prod_norm"] == prod_gasto].copy()
+        base = base[~base["Indice_norm"].isin({norm_text("TOTAL"), norm_text("INFO")})].copy()
+        base = base[~base["Obs_norm"].isin(OBS_GASTOS_SUBTOTALES)].copy()
+        return base
+    idx = {norm_text(i) for i in INDICES_GASTOS_COMERCIALES}
+    return df_in[df_in["Indice_norm"].isin(idx)].copy()
+
+
+def suma_gastos_comerciales(df_in: pd.DataFrame) -> float:
+    """Suma gastos comerciales del producto activo evitando dobles conteos del nuevo ART.
+
+    En UG los gastos vienen en índices separados. En ART el Excel nuevo trae un índice
+    combinado C ADM Y VEN ART EMP con subtotales internos; por eso se toma el TOTAL/GASTOS
+    del bloque ART y luego se respetan los interruptores de renta/patrimonio cuando existan.
+    """
+    if df_in is None or df_in.empty:
+        return 0.0
+    if _producto_actual_es_art():
+        total = suma_obs(df_in, producto_cfg.obs_gastos_total, ["TOTAL"])
+        if abs(total) < 1e-9:
+            total = float(detalle_gastos_comerciales(df_in)["Valor"].sum())
+        if not globals().get("incluir_imp_renta", False):
+            total -= suma_indices(df_in, ["C IMP REN"])
+        if not globals().get("incluir_imp_patrimonio", False):
+            total -= suma_indices(df_in, ["C IMP PATR"])
+        return float(total)
+    return suma_indices(df_in, INDICES_GASTOS_COMERCIALES)
+
+
+
+
+def suma_admin_comercial(df_in: pd.DataFrame) -> float:
+    """Bloque administrativo para simulación, separado por producto."""
+    if df_in is None or df_in.empty:
+        return 0.0
+    if _producto_actual_es_art():
+        return suma_obs(df_in, producto_cfg.obs_admin, producto_cfg.indices_admin)
+    return suma_indices(df_in, INDICES_ADMINISTRACION)
+
+
+def suma_ventas_comercial(df_in: pd.DataFrame) -> float:
+    """Bloque de ventas/logística comercial para simulación."""
+    if df_in is None or df_in.empty:
+        return 0.0
+    if _producto_actual_es_art():
+        return suma_obs(df_in, producto_cfg.obs_ventas, producto_cfg.indices_ventas or producto_cfg.indices_admin)
+    return suma_indices(df_in, INDICES_VENTAS)
+
+
+def suma_financiera_comercial(df_in: pd.DataFrame) -> float:
+    """Bloque financiero para simulación. En ART combina el subtotal financiero y la diferencia en cambio."""
+    if df_in is None or df_in.empty:
+        return 0.0
+    if _producto_actual_es_art():
+        fin_subtotal = 0.0
+        for obs_fin in _split_param_list(producto_cfg.obs_financiero):
+            fin_subtotal += suma_obs(df_in, obs_fin, producto_cfg.indices_admin or producto_cfg.indices_gastos_base)
+        return fin_subtotal + suma_indices(df_in, INDICES_FINANCIEROS)
+    return suma_indices(df_in, INDICES_FINANCIEROS)
+
+
+def suma_impuestos_base_comercial(df_in: pd.DataFrame) -> float:
+    if df_in is None or df_in.empty:
+        return 0.0
+    if _producto_actual_es_art():
+        return 0.0
+    return suma_indices(df_in, INDICES_IMPUESTOS_BASE)
+
+def resumen_gastos_comerciales(df_in: pd.DataFrame) -> pd.DataFrame:
+    base = detalle_gastos_comerciales(df_in)
+    if base.empty:
+        return pd.DataFrame(columns=["Observacion", "Valor", "Participacion", "Acumulado"])
+    out = base.groupby("Observacion", as_index=False)["Valor"].sum().sort_values("Valor", ascending=False)
+    total = suma_gastos_comerciales(df_in)
+    if abs(total) < 1e-9:
+        total = float(out["Valor"].sum()) if not out.empty else 0.0
+    out["Participacion"] = out["Valor"].apply(lambda x: safe_div(x, total))
+    out["Acumulado"] = out["Participacion"].cumsum()
+    return out
 
 
 def resumen_por_observacion(df: pd.DataFrame, indices: Iterable[str]) -> pd.DataFrame:
@@ -934,7 +1355,7 @@ st.markdown("""
     <div style="flex:1;min-width:260px;">
       <div class="hero-badge"><span class="hero-dot"></span>Sistema en vivo &nbsp;·&nbsp; Kolcem S.A.S.</div>
       <div class="hero-title">Cockpit Gerencial · Costeo de Cemento</div>
-      <div class="hero-subtitle">Análisis ejecutivo de costos industriales &mdash; Empacado · Granel · Comercial · Tendencias · Metodología</div>
+      <div class="hero-subtitle">Análisis ejecutivo de costos industriales &mdash; Multi-producto · Empacado · Granel · Comercial · Tendencias</div>
       <div class="calm-note" style="margin-top:14px;">
         🟢 Verde = mejora real de costo o margen &nbsp;&nbsp;
         🟡 Ámbar = atención controlada &nbsp;&nbsp;
@@ -970,10 +1391,65 @@ if uploaded is None:
     st.stop()
 
 try:
-    df, metas_df, sheet_names = load_excel(uploaded.getvalue())
+    df, metas_df, parametros_productos_df, sheet_names = load_excel(uploaded.getvalue())
 except Exception as exc:
     st.error(f"No pude leer el archivo: {exc}")
     st.stop()
+
+# ------------------------------------------------------------
+# Selector de producto / presentación
+# ------------------------------------------------------------
+
+productos_excel = construir_productos_desde_parametros(parametros_productos_df)
+PRODUCTOS_COSTEO = productos_excel if productos_excel else PRODUCTOS_COSTEO_DEFAULT.copy()
+
+df_consolidado_completo = df.copy()
+productos_disponibles = {
+    key: cfg for key, cfg in PRODUCTOS_COSTEO.items()
+    if producto_disponible(df_consolidado_completo, cfg)
+}
+if not productos_disponibles:
+    st.error("No encontré productos compatibles en Consolidado. Revise los nombres de producción y los índices de Ayudas.")
+    st.stop()
+
+st.sidebar.divider()
+st.sidebar.subheader("Producto")
+producto_labels = {key: cfg.nombre for key, cfg in productos_disponibles.items()}
+producto_key = st.sidebar.selectbox(
+    "Producto / presentación",
+    list(productos_disponibles.keys()),
+    format_func=lambda k: producto_labels[k],
+    index=0,
+    help="Los productos y presentaciones se leen desde la hoja Parametros Productos del Excel. Evita mezclar cantidades, precios e índices entre productos.",
+)
+producto_cfg = productos_disponibles[producto_key]
+
+NOMBRE_PRODUCTO = producto_cfg.nombre
+PRODUCTO_CORTO = producto_cfg.nombre_corto
+PESO_BOLSA_KG = float(producto_cfg.peso_bolsa_kg)
+SACOS_POR_TON = safe_div(1000.0, PESO_BOLSA_KG)
+
+INDICES_GRANEL = list(producto_cfg.indices_granel)
+INDICES_EMPACADO = list(producto_cfg.indices_empacado)
+INDICES_GASTOS_COMERCIALES_BASE = list(producto_cfg.indices_gastos_base)
+INDICES_ADMINISTRACION = list(producto_cfg.indices_admin)
+INDICES_VENTAS = list(producto_cfg.indices_ventas)
+INDICES_FINANCIEROS = list(producto_cfg.indices_fin)
+INDICES_IMPUESTOS_BASE = list(producto_cfg.indices_imp_base)
+INDICES_GASTOS_COMERCIALES = INDICES_GASTOS_COMERCIALES_BASE.copy()
+INDICES_COSTO_TOTAL = INDICES_EMPACADO + INDICES_GASTOS_COMERCIALES
+OBS_KG_GRANEL = producto_cfg.obs_kg_granel
+OBS_UND_EMPACADO = producto_cfg.obs_und_empacado
+OBS_PRECIO_BOLSA = normalizar_obs_precio_bolsa(producto_cfg.obs_precio_bolsa, PESO_BOLSA_KG)
+OBS_CEMENTO_GRANEL_TRANSFERIDO = producto_cfg.obs_cemento_transferido
+OBS_CANTIDAD_VENDIDA = producto_cfg.obs_cantidad_vendida
+
+df = filtrar_producto_costeo(df_consolidado_completo, producto_cfg)
+if df.empty:
+    st.error(f"No hay filas válidas para {producto_cfg.nombre} después de filtrar el Consolidado.")
+    st.stop()
+
+st.sidebar.caption(f"Presentación activa: {PESO_BOLSA_KG:g} kg/bolsa · {SACOS_POR_TON:.2f} bolsas/ton")
 
 # ------------------------------------------------------------
 # Selectores
@@ -1078,19 +1554,21 @@ INDICES_COSTO_TOTAL = INDICES_EMPACADO + INDICES_GASTOS_COMERCIALES
 # Cálculos centrales
 # ------------------------------------------------------------
 
-c_mp_ug = suma_indices(df_mes, ["C MP UG"])
-c_mo_ug = suma_indices(df_mes, ["C MO UG"])
-c_cif_ug = suma_indices(df_mes, ["C CIF UG"])
+# Componentes dinámicos por producto seleccionado.
+# UG usa C MP/MO/CIF UG y C MP/MO/CIF EMP; ART usa C MP/MO/CIF ART GRN y C MP/MO/CIF ART EMP.
+c_mp_ug = suma_indices(df_mes, [INDICES_GRANEL[0]]) if len(INDICES_GRANEL) > 0 else 0.0
+c_mo_ug = suma_indices(df_mes, [INDICES_GRANEL[1]]) if len(INDICES_GRANEL) > 1 else 0.0
+c_cif_ug = suma_indices(df_mes, [INDICES_GRANEL[2]]) if len(INDICES_GRANEL) > 2 else 0.0
 costo_granel = c_mp_ug + c_mo_ug + c_cif_ug
 kg_granel = suma_obs(df_mes, OBS_KG_GRANEL)
 costo_kg_granel = safe_div(costo_granel, kg_granel)
 
-c_mp_emp = suma_indices(df_mes, ["C MP EMP"])
-c_mo_emp = suma_indices(df_mes, ["C MO EMP"])
-c_cif_emp = suma_indices(df_mes, ["C CIF EMP"])
+c_mp_emp = suma_indices(df_mes, [INDICES_EMPACADO[0]]) if len(INDICES_EMPACADO) > 0 else 0.0
+c_mo_emp = suma_indices(df_mes, [INDICES_EMPACADO[1]]) if len(INDICES_EMPACADO) > 1 else 0.0
+c_cif_emp = suma_indices(df_mes, [INDICES_EMPACADO[2]]) if len(INDICES_EMPACADO) > 2 else 0.0
 costo_emp = c_mp_emp + c_mo_emp + c_cif_emp
 und_emp = suma_obs(df_mes, OBS_UND_EMPACADO)
-kg_emp = und_emp * 50
+kg_emp = und_emp * PESO_BOLSA_KG
 costo_saco_emp = safe_div(costo_emp, und_emp)
 costo_kg_emp = safe_div(costo_emp, kg_emp)
 
@@ -1099,7 +1577,7 @@ incremental_emp = costo_emp - cemento_transf
 incremental_saco = safe_div(incremental_emp, und_emp)
 incremental_kg = safe_div(incremental_emp, kg_emp)
 
-costos_gastos = suma_indices(df_mes, INDICES_GASTOS_COMERCIALES)
+costos_gastos = suma_gastos_comerciales(df_mes)
 gastos_saco = safe_div(costos_gastos, und_emp)
 gastos_kg = safe_div(costos_gastos, kg_emp)
 
@@ -1123,11 +1601,29 @@ precio_obj_sin_extra = safe_div(costo_total_saco_sin_extra, 1 - margen_obj)
 precio_obj_con_extra = safe_div(costo_total_saco_con_extra, 1 - margen_obj)
 precio_obj_sin_extra_iva = precio_obj_sin_extra * (1 + iva)
 precio_obj_con_extra_iva = precio_obj_con_extra * (1 + iva)
-precio_actual = suma_obs(df_mes, OBS_PRECIO_BOLSA)
+und_vendida = suma_obs(df_mes, OBS_CANTIDAD_VENDIDA)
+kg_vendido = und_vendida * PESO_BOLSA_KG
+ton_vendida = safe_div(kg_vendido, 1000.0)
+
+precio_actual_bruto, OBS_PRECIO_BOLSA_USADA = suma_obs_precio_bolsa(df_mes, OBS_PRECIO_BOLSA, PESO_BOLSA_KG)
+precio_actual = precio_actual_bruto if und_vendida > 0 else 0.0
+if und_vendida <= 0 and precio_actual_bruto > 0:
+    OBS_PRECIO_BOLSA_USADA = f"{OBS_PRECIO_BOLSA_USADA} · sin ventas: precio promedio aplicado = 0"
+
 utilidad_saco = precio_actual - costo_total_saco_sin_extra
 margen_real = safe_div(utilidad_saco, precio_actual)
 brecha_precio = precio_actual - precio_obj_sin_extra
 brecha_margen = margen_real - margen_obj
+
+# Resultado empresa del periodo seleccionado
+venta_total_real = und_vendida * precio_actual
+costo_total_real_sin_extra = costo_emp + costos_gastos
+costo_total_real_con_extra = costo_total_real_sin_extra + gastos_extra
+utilidad_total_real = venta_total_real - costo_total_real_sin_extra
+utilidad_total_real_con_extra = venta_total_real - costo_total_real_con_extra
+margen_total_real = safe_div(utilidad_total_real, venta_total_real)
+margen_total_real_con_extra = safe_div(utilidad_total_real_con_extra, venta_total_real)
+utilidad_total_real_ton = safe_div(utilidad_total_real, safe_div(kg_emp, 1000.0))
 
 # ------------------------------------------------------------
 # Variaciones relevantes a nivel de observación
@@ -1198,12 +1694,12 @@ def serie_mensual_observaciones(df_in: pd.DataFrame, indices: list[str], top_n_o
 def filas_energia(df_in: pd.DataFrame) -> pd.DataFrame:
     """Filtra rubros de energía para tendencias ejecutivas.
 
-    Usa observación e índice para cubrir variaciones de nombre como ENERGÍA,
-    ENERGIA ELECTRICA, ELECTRICIDAD, kWh o similares.
+    Busca en observación e índice para cubrir variaciones como ENERGÍA,
+    ENERGIA ELECTRICA, ELECTRICIDAD, kWh, KW/H o términos equivalentes.
     """
     if df_in is None or df_in.empty:
         return pd.DataFrame(columns=df_in.columns if df_in is not None else [])
-    patron = "ENERG|ELECT|KWH|KW/H|KILO WATT|KILOWATT"
+    patron = r"ENERG|ELECT|KWH|KW/H|KILO WATT|KILOWATT"
     mask_obs = df_in["Obs_norm"].str.contains(patron, na=False, regex=True)
     mask_idx = df_in["Indice_norm"].str.contains(patron, na=False, regex=True)
     return df_in[mask_obs | mask_idx].copy()
@@ -1231,12 +1727,17 @@ def serie_mensual_kpis(df_in: pd.DataFrame) -> pd.DataFrame:
         d = filtro_periodo(df_in, p)
         ce = suma_indices(d, INDICES_EMPACADO)
         ug = suma_obs(d, OBS_UND_EMPACADO)
-        kg_e = ug * 50
+        kg_e = ug * PESO_BOLSA_KG
         cg = suma_indices(d, INDICES_GRANEL)
         kg_g = suma_obs(d, OBS_KG_GRANEL)
-        gastos = suma_indices(d, INDICES_GASTOS_COMERCIALES)
+        gastos = suma_gastos_comerciales(d)
         energia = suma_energia(d)
-        precio = suma_obs(d, OBS_PRECIO_BOLSA)
+        gastos_extra_mes = float(d.loc[d["Prod_norm"].str.contains("GASTOS EXTRA", na=False), "Valor"].sum())
+        und_vendida_mes = suma_obs(d, OBS_CANTIDAD_VENDIDA)
+        kg_vendido_mes = und_vendida_mes * PESO_BOLSA_KG
+        ton_vendida_mes = safe_div(kg_vendido_mes, 1000.0)
+        precio_bruto_mes, _obs_precio_mes = suma_obs_precio_bolsa(d, OBS_PRECIO_BOLSA, PESO_BOLSA_KG)
+        precio = precio_bruto_mes if und_vendida_mes > 0 else 0.0
         costo_saco = safe_div(ce, ug)
         costo_empacado_kg = safe_div(ce, kg_e)
         costo_empacado_ton = costo_empacado_kg * 1000.0
@@ -1246,7 +1747,12 @@ def serie_mensual_kpis(df_in: pd.DataFrame) -> pd.DataFrame:
         ton_ref_energia = safe_div(kg_ref_energia, 1000.0)
         costo_comercial = costo_saco + safe_div(gastos, ug)
         utilidad = precio - costo_comercial
-        margen = safe_div(utilidad, precio)
+        venta_total_mes = und_vendida_mes * precio
+        costo_comercial_total_mes = ce + gastos
+        costo_comercial_total_con_extra_mes = costo_comercial_total_mes + gastos_extra_mes
+        utilidad_empresa_mes = venta_total_mes - costo_comercial_total_mes
+        utilidad_empresa_con_extra_mes = venta_total_mes - costo_comercial_total_con_extra_mes
+        margen = safe_div(utilidad_empresa_mes, venta_total_mes)
         rows.append({
             "Ano": p.ano,
             "Mes": p.mes,
@@ -1255,14 +1761,24 @@ def serie_mensual_kpis(df_in: pd.DataFrame) -> pd.DataFrame:
             "PeriodoOrden": p.ano * 100 + p.mes_nro,
             "Costo empacado": ce,
             "UND producidas": ug,
+            "UND vendidas": und_vendida_mes,
             "Kg empacados": kg_e,
+            "Kg vendidos": kg_vendido_mes,
+            "Ton vendidas": ton_vendida_mes,
             "Costo empacado / kg": costo_empacado_kg,
             "Costo empacado / ton": costo_empacado_ton,
             "Costo / saco": costo_saco,
             "Costo comercial / saco": costo_comercial,
             "Precio actual / saco": precio,
             "Utilidad / saco": utilidad,
+            "Venta total empresa": venta_total_mes,
+            "Costo comercial total": costo_comercial_total_mes,
+            "Gastos extraordinarios": gastos_extra_mes,
+            "Utilidad empresa": utilidad_empresa_mes,
+            "Utilidad empresa con extra": utilidad_empresa_con_extra_mes,
+            "Utilidad / ton": safe_div(utilidad_empresa_mes, safe_div(kg_e, 1000.0)),
             "Margen real": margen,
+            "Margen con extra": safe_div(utilidad_empresa_con_extra_mes, venta_total_mes),
             "Costo granel": cg,
             "Kg granel": kg_g,
             "Costo granel / kg": costo_granel_kg,
@@ -1279,7 +1795,7 @@ def serie_mensual_kpis(df_in: pd.DataFrame) -> pd.DataFrame:
 def texto_tendencia_kpis(kpis: pd.DataFrame, max_items: int = 8) -> str:
     if kpis is None or kpis.empty or len(kpis) < 3:
         return "No hay suficiente historia para evaluar tendencia. Se requieren al menos 3 meses cargados."
-    cols = ["Costo granel", "Costo granel / ton", "Costo empacado", "Costo empacado / ton", "Energía", "Energía / kg", "Energía / ton"]
+    cols = ["Costo granel", "Costo granel / kg", "Costo granel / ton", "Costo empacado", "Costo empacado / kg", "Costo empacado / ton", "Energía", "Energía / kg", "Energía / ton"]
     lineas = []
     for col in cols:
         if col not in kpis.columns:
@@ -1321,6 +1837,219 @@ if not alertas:
     alertas.append(["OK", "Sin alertas críticas", "El modelo tiene datos base suficientes para decisión."])
 alertas_df = pd.DataFrame(alertas, columns=["Nivel", "Alerta", "Acción sugerida"])
 
+
+# ------------------------------------------------------------
+# Resumen multi-producto y portafolio
+# ------------------------------------------------------------
+
+def _dedupe_indices(indices: Iterable[str]) -> list[str]:
+    """Conserva orden y elimina duplicados por texto normalizado."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for idx in indices or []:
+        idx_txt = str(idx).strip()
+        if not idx_txt:
+            continue
+        key = norm_text(idx_txt)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(idx_txt)
+    return out
+
+
+def _indices_gastos_producto(producto: ProductoCosteo, incluir_renta: bool, incluir_patrimonio: bool) -> list[str]:
+    indices = list(producto.indices_gastos_base or [])
+    if incluir_renta:
+        indices.append("C IMP REN")
+    if incluir_patrimonio:
+        indices.append("C IMP PATR")
+    return _dedupe_indices(indices)
+
+
+def _sumar_gastos_producto(df_producto_mes: pd.DataFrame, producto: ProductoCosteo, indices_gastos: list[str]) -> float:
+    """Suma gastos sin duplicar subtotales. La regla base siempre son índices parametrizados."""
+    if df_producto_mes is None or df_producto_mes.empty:
+        return 0.0
+    return suma_indices(df_producto_mes, indices_gastos)
+
+
+def calcular_resumen_producto(
+    df_full: pd.DataFrame,
+    producto: ProductoCosteo,
+    periodo_calc: Periodo,
+    incluir_renta: bool = False,
+    incluir_patrimonio: bool = False,
+) -> dict[str, object]:
+    """Calcula rentabilidad completa por producto desde la configuración del Excel.
+
+    Esta función es la pieza clave de la nueva arquitectura: cada producto se evalúa con
+    sus propios productos contables, índices, cantidades, precio y presentación.
+    """
+    df_producto = filtrar_producto_costeo(df_full, producto)
+    df_producto_mes = filtro_periodo(df_producto, periodo_calc) if df_producto is not None and not df_producto.empty else pd.DataFrame()
+    peso_bolsa = float(producto.peso_bolsa_kg or 0) or 50.0
+    bolsas_por_ton = safe_div(1000.0, peso_bolsa)
+
+    indices_gastos = _indices_gastos_producto(producto, incluir_renta, incluir_patrimonio)
+
+    costo_granel_p = suma_indices(df_producto_mes, producto.indices_granel)
+    kg_granel_p = suma_obs(df_producto_mes, producto.obs_kg_granel)
+    costo_kg_granel_p = safe_div(costo_granel_p, kg_granel_p)
+
+    costo_emp_p = suma_indices(df_producto_mes, producto.indices_empacado)
+    und_emp_p = suma_obs(df_producto_mes, producto.obs_und_empacado)
+    kg_emp_p = und_emp_p * peso_bolsa
+    toneladas_p = safe_div(kg_emp_p, 1000.0)
+
+    costo_saco_emp_p = safe_div(costo_emp_p, und_emp_p)
+    costo_kg_emp_p = safe_div(costo_emp_p, kg_emp_p)
+
+    cemento_transf_p = suma_obs(df_producto_mes, producto.obs_cemento_transferido, producto.indices_empacado)
+    incremental_emp_p = costo_emp_p - cemento_transf_p
+    incremental_saco_p = safe_div(incremental_emp_p, und_emp_p)
+
+    gastos_p = _sumar_gastos_producto(df_producto_mes, producto, indices_gastos)
+    gastos_saco_p = safe_div(gastos_p, und_emp_p)
+    gastos_kg_p = safe_div(gastos_p, kg_emp_p)
+
+    und_vendida_p = suma_obs(df_producto_mes, producto.obs_cantidad_vendida)
+    kg_vendido_p = und_vendida_p * peso_bolsa
+    toneladas_vendidas_p = safe_div(kg_vendido_p, 1000.0)
+
+    precio_bolsa_bruto_p, obs_precio_usada_p = suma_obs_precio_bolsa(df_producto_mes, producto.obs_precio_bolsa, peso_bolsa)
+    precio_bolsa_p = precio_bolsa_bruto_p if und_vendida_p > 0 else 0.0
+    if und_vendida_p <= 0 and precio_bolsa_bruto_p > 0:
+        obs_precio_usada_p = f"{obs_precio_usada_p} · sin ventas: precio promedio aplicado = 0"
+
+    precio_kg_p = safe_div(precio_bolsa_p, peso_bolsa)
+    precio_ton_p = precio_kg_p * 1000.0
+
+    venta_total_p = und_vendida_p * precio_bolsa_p
+
+    # Costeo industrial/comercial de lo producido.
+    costo_produccion_total_p = costo_emp_p + gastos_p
+    costo_total_saco_p = safe_div(costo_produccion_total_p, und_emp_p)
+    costo_total_kg_p = safe_div(costo_produccion_total_p, kg_emp_p)
+    costo_total_ton_p = costo_total_kg_p * 1000.0
+
+    # Resultado real vendido: si no hay venta, no hay precio promedio aplicado ni ingreso.
+    # La producción no vendida queda como costo/inventario económico, no como venta ficticia.
+    costo_ventas_real_p = und_vendida_p * costo_total_saco_p
+
+    # Balance producción vs venta por producto.
+    # Si ventas > producción, NO hay bolsas por vender: hubo venta desde inventario previo.
+    # Si producción > ventas, ese excedente queda como producción no vendida del periodo.
+    bolsas_producidas_no_vendidas_p = max(und_emp_p - und_vendida_p, 0.0)
+    bolsas_vendidas_inventario_p = max(und_vendida_p - und_emp_p, 0.0)
+    kg_producidos_no_vendidos_p = bolsas_producidas_no_vendidas_p * peso_bolsa
+    kg_vendidos_inventario_p = bolsas_vendidas_inventario_p * peso_bolsa
+    ton_producidas_no_vendidas_p = safe_div(kg_producidos_no_vendidos_p, 1000.0)
+    ton_vendidas_inventario_p = safe_div(kg_vendidos_inventario_p, 1000.0)
+    saldo_neto_bolsas_p = und_emp_p - und_vendida_p
+    saldo_neto_ton_p = toneladas_p - toneladas_vendidas_p
+
+    costo_inventario_no_vendido_p = bolsas_producidas_no_vendidas_p * costo_total_saco_p
+
+    venta_valorizada_produccion_p = und_emp_p * precio_bolsa_p
+    utilidad_valorizada_produccion_p = venta_valorizada_produccion_p - costo_produccion_total_p
+
+    utilidad_total_p = venta_total_p - costo_ventas_real_p
+    utilidad_saco_p = safe_div(utilidad_total_p, und_vendida_p)
+    utilidad_kg_p = safe_div(utilidad_total_p, kg_vendido_p)
+    utilidad_ton_p = safe_div(utilidad_total_p, toneladas_vendidas_p)
+    margen_p = safe_div(utilidad_total_p, venta_total_p)
+
+    estado = "OK"
+    if df_producto_mes.empty:
+        estado = "Sin filas"
+    elif und_emp_p <= 0:
+        estado = "Sin unidades"
+    elif precio_bolsa_p <= 0:
+        estado = "Sin precio"
+    elif utilidad_total_p < 0:
+        estado = "Pérdida"
+
+    return {
+        "Key": producto.key,
+        "Producto": producto.nombre,
+        "Nombre corto": producto.nombre_corto,
+        "Obs precio bolsa": obs_precio_usada_p,
+        "Kg bolsa": peso_bolsa,
+        "Bolsas / ton": bolsas_por_ton,
+        "Toneladas": toneladas_p,
+        "Bolsas producidas": und_emp_p,
+        "Bolsas vendidas": und_vendida_p,
+        "Bolsas": und_emp_p,
+        "Kg empacados": kg_emp_p,
+        "Kg vendidos": kg_vendido_p,
+        "Toneladas vendidas": toneladas_vendidas_p,
+        "Kg granel": kg_granel_p,
+        "Costo granel": costo_granel_p,
+        "Costo granel / kg": costo_kg_granel_p,
+        "Costo empacado": costo_emp_p,
+        "Costo empacado / bolsa": costo_saco_emp_p,
+        "Costo empacado / kg": costo_kg_emp_p,
+        "Cemento transferido": cemento_transf_p,
+        "Incremental empaque": incremental_emp_p,
+        "Incremental / bolsa": incremental_saco_p,
+        "Gastos asignables": gastos_p,
+        "Gastos / bolsa": gastos_saco_p,
+        "Gastos / kg": gastos_kg_p,
+        "Precio / bolsa": precio_bolsa_p,
+        "Precio / kg": precio_kg_p,
+        "Precio / ton": precio_ton_p,
+        "Venta total": venta_total_p,
+        "Costo producción total": costo_produccion_total_p,
+        "Costo ventas real": costo_ventas_real_p,
+        "Costo total comercial": costo_ventas_real_p,
+        "Costo total / bolsa": costo_total_saco_p,
+        "Costo total / kg": costo_total_kg_p,
+        "Costo total / ton": costo_total_ton_p,
+        "Bolsas producidas no vendidas": bolsas_producidas_no_vendidas_p,
+        "Bolsas vendidas inventario previo": bolsas_vendidas_inventario_p,
+        "Bolsas no vendidas": bolsas_producidas_no_vendidas_p,
+        "Ton producidas no vendidas": ton_producidas_no_vendidas_p,
+        "Ton vendidas inventario previo": ton_vendidas_inventario_p,
+        "Saldo neto bolsas producción - venta": saldo_neto_bolsas_p,
+        "Saldo neto ton producción - venta": saldo_neto_ton_p,
+        "Costo inventario no vendido": costo_inventario_no_vendido_p,
+        "Venta valorizada producción": venta_valorizada_produccion_p,
+        "Utilidad valorizada producción": utilidad_valorizada_produccion_p,
+        "Utilidad empresa": utilidad_total_p,
+        "Utilidad / bolsa": utilidad_saco_p,
+        "Utilidad / kg": utilidad_kg_p,
+        "Utilidad / ton": utilidad_ton_p,
+        "Margen": margen_p,
+        "Estado": estado,
+        "Índices granel": "|".join(producto.indices_granel),
+        "Índices empacado": "|".join(producto.indices_empacado),
+        "Índices gastos": "|".join(indices_gastos),
+    }
+
+
+def resumen_productos_periodo(
+    df_full: pd.DataFrame,
+    productos: dict[str, ProductoCosteo],
+    periodo_calc: Periodo,
+    incluir_renta: bool = False,
+    incluir_patrimonio: bool = False,
+) -> pd.DataFrame:
+    rows = []
+    for cfg in productos.values():
+        rows.append(calcular_resumen_producto(df_full, cfg, periodo_calc, incluir_renta, incluir_patrimonio))
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return out
+    out["Participación venta"] = out["Venta total"].apply(lambda x: safe_div(x, float(out["Venta total"].sum())))
+    out["Participación utilidad"] = out["Utilidad empresa"].apply(lambda x: safe_div(x, float(out["Utilidad empresa"].sum())))
+    out["Contribución margen pp"] = out.apply(lambda r: r["Participación venta"] * r["Margen"], axis=1)
+    return out.sort_values(["Venta total", "Utilidad empresa"], ascending=False)
+
+
+def chart_empty_guard(df_chart: pd.DataFrame, y_col: str) -> bool:
+    return df_chart is None or df_chart.empty or y_col not in df_chart.columns or float(pd.to_numeric(df_chart[y_col], errors="coerce").fillna(0).abs().sum()) <= 0
+
 # ------------------------------------------------------------
 # Tabs
 # ------------------------------------------------------------
@@ -1328,8 +2057,8 @@ alertas_df = pd.DataFrame(alertas, columns=["Nivel", "Alerta", "Acción sugerida
 tabs = st.tabs([
     "📊 Resumen Gerencial",
     "💰 Precio & Margen",
-    "🏭 Granel UG",
-    "📦 Empacado 50KG",
+    f"🏭 Granel {PRODUCTO_CORTO}",
+    f"📦 Empacado {PRODUCTO_CORTO}",
     "🧾 Gastos ADM/Ventas",
     "📈 Paretos",
     "↕️ Variaciones",
@@ -1338,113 +2067,327 @@ tabs = st.tabs([
     "🎯 Metas / Exportar",
     "📐 Metodología",
     "🤖 Análisis IA",
+    "📊 Utilidad Empresa",
     "🧮 Simulador Toneladas",
+    "🧩 Escenarios Portafolio",
+    "🏗️ Costeo Ambos Productos",
 ])
 
 with tabs[0]:
-    st.subheader(f"Resumen ejecutivo - {periodo.etiqueta}")
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        kpi("Costo empacado completo", money(costo_emp), f"{status_icon(var_costo_saco)} {delta_costo_saco}")
-    with c2:
-        kpi("Costo total comercial / saco", money(costo_total_saco_sin_extra))
-    with c3:
-        kpi("Precio actual / saco", money(precio_actual))
-    with c4:
-        kpi("Margen real", pct(margen_real), f"Utilidad: {money(utilidad_saco)}", tone="red" if utilidad_saco < 0 or margen_real < 0 else "green")
+    st.subheader(f"Resumen gerencial multi-producto - {periodo.etiqueta}")
+    st.caption(
+        "Vista consolidada por producto. Cada bloque se calcula desde la hoja Parametros Productos: "
+        "producto contable, índices, observaciones, presentación y gastos. Al crear un nuevo producto en Excel, "
+        "la app lo incorpora sin quemar lógica en el código."
+    )
 
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        kpi("Costo granel / kg", money(costo_kg_granel), f"{status_icon(var_costo_kg_granel)} {delta_costo_kg_granel}")
-    with c2:
-        kpi("Incremental empaque / saco", money(incremental_saco))
-    with c3:
-        kpi("Gastos asignados / saco", money(gastos_saco))
-    with c4:
-        kpi("Precio objetivo + IVA", money(precio_obj_sin_extra_iva))
+    resumen_productos_df = resumen_productos_periodo(
+        df_consolidado_completo,
+        productos_disponibles,
+        periodo,
+        incluir_imp_renta,
+        incluir_imp_patrimonio,
+    )
 
-    st.markdown("### Alertas gerenciales")
-    dataframe_gerencial(alertas_df)
-
-    st.markdown("### Desviaciones relevantes por observación")
-    if df_prev.empty:
-        st.info("No existe mes anterior cargado. Las desviaciones relevantes se activan desde el segundo mes.")
-    elif variaciones_relevantes.empty:
-        st.success("No hay desviaciones relevantes según los umbrales configurados.")
+    if resumen_productos_df.empty:
+        st.warning("No hay productos con datos suficientes para el periodo seleccionado.")
     else:
-        dataframe_gerencial(variaciones_relevantes.head(10)[["Alerta", "Indice", "Observacion", "Valor", "Valor anterior", "Variacion $", "Variacion %", "Impacto por saco", "Impacto por kg", "Criterio"]])
+        venta_portafolio = float(resumen_productos_df["Venta total"].sum())
+        costo_portafolio = float(resumen_productos_df["Costo total comercial"].sum())
+        utilidad_portafolio = float(resumen_productos_df["Utilidad empresa"].sum())
+        toneladas_portafolio = float(resumen_productos_df["Toneladas"].sum())
+        margen_portafolio = safe_div(utilidad_portafolio, venta_portafolio)
+        utilidad_ton_portafolio = safe_div(utilidad_portafolio, toneladas_portafolio)
 
-    col_a, col_b = st.columns([1.2, 1])
-    with col_a:
-        puente = pd.DataFrame([
-            ["Costo empacado completo / saco", costo_saco_emp],
-            ["Gastos asignados / saco", gastos_saco],
-            ["Costo comercial sin extraordinarios", costo_total_saco_sin_extra],
-            ["Gastos extraordinarios / saco", gastos_extra_saco],
-            ["Costo comercial con extraordinarios", costo_total_saco_con_extra],
-            ["Precio objetivo antes IVA", precio_obj_sin_extra],
-            ["Precio objetivo con IVA", precio_obj_sin_extra_iva],
-        ], columns=["Métrica", "Valor"])
-        dataframe_gerencial(puente)
-    with col_b:
-        fig = px.bar(
-            pd.DataFrame({"Componente": ["Empacado", "Gastos", "Extra"], "Valor por saco": [costo_saco_emp, gastos_saco, gastos_extra_saco]}),
-            x="Componente", y="Valor por saco", title="Construcción del costo / saco",
-            color="Componente",
-            color_discrete_map={"Empacado":"#E8650A","Gastos":"#F5A623","Extra":"#F59E0B"},
+        st.markdown("### Portafolio total del periodo")
+        p1, p2, p3, p4 = st.columns(4)
+        with p1:
+            kpi("Venta total portafolio", money(venta_portafolio), help_text=f"{num(toneladas_portafolio, 2)} toneladas")
+        with p2:
+            kpi("Costo total portafolio", money(costo_portafolio), help_text="Costo comercial sin extraordinarios")
+        with p3:
+            kpi("Utilidad portafolio", money(utilidad_portafolio), help_text=f"{money(utilidad_ton_portafolio)}/ton", tone="red" if utilidad_portafolio < 0 else "green")
+        with p4:
+            kpi("Margen portafolio", pct(margen_portafolio), tone="red" if margen_portafolio < 0 else "green")
+
+        st.markdown("### Rentabilidad separada por producto")
+        productos_rows = resumen_productos_df.to_dict("records")
+        for start_i in range(0, len(productos_rows), 2):
+            cols = st.columns(min(2, len(productos_rows[start_i:start_i+2])))
+            for col, row in zip(cols, productos_rows[start_i:start_i+2]):
+                with col:
+                    tone = "red" if float(row.get("Utilidad empresa", 0) or 0) < 0 else "green"
+                    st.markdown(
+                        f"""
+                        <div class="kpi-card kpi-{tone}" style="min-height:220px;">
+                          <div>
+                            <div class="kpi-label">{escape(str(row.get('Nombre corto', row.get('Producto', 'Producto'))))}</div>
+                            <div style="font-family:'Sora',sans-serif;font-size:1.05rem;font-weight:800;color:var(--text-pri);line-height:1.15;margin-bottom:10px;">
+                              {escape(str(row.get('Producto','')))}
+                            </div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;color:var(--text-sec);font-size:.82rem;">
+                              <div>Presentación</div><div style="text-align:right;font-weight:800;">{fmt_number(row.get('Kg bolsa',0),2)} kg</div>
+                              <div>Ton producidas</div><div style="text-align:right;font-weight:800;">{fmt_number(row.get('Toneladas',0),2)}</div>
+                              <div>Bolsas vendidas</div><div style="text-align:right;font-weight:800;">{fmt_number(row.get('Bolsas vendidas',0),2)}</div>
+                              <div>Precio / bolsa</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Precio / bolsa',0))}</div>
+                              <div>Costo / bolsa</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Costo total / bolsa',0))}</div>
+                              <div>Utilidad / bolsa</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Utilidad / bolsa',0))}</div>
+                              <div>Margen</div><div style="text-align:right;font-weight:800;">{fmt_pct(row.get('Margen',0))}</div>
+                            </div>
+                          </div>
+                          <div class="kpi-delta">Utilidad total: {fmt_money(row.get('Utilidad empresa',0))}</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+        columnas_resumen = [
+            "Producto", "Obs precio bolsa", "Kg bolsa", "Toneladas", "Bolsas producidas", "Bolsas vendidas", "Toneladas vendidas", "Precio / bolsa", "Precio / ton",
+            "Costo total / bolsa", "Costo total / ton", "Utilidad / bolsa", "Utilidad / ton",
+            "Venta total", "Costo ventas real", "Utilidad empresa", "Margen", "Costo producción total", "Bolsas producidas no vendidas", "Bolsas vendidas inventario previo", "Costo inventario no vendido", "Participación venta", "Participación utilidad", "Estado",
+        ]
+        dataframe_gerencial(resumen_productos_df[[c for c in columnas_resumen if c in resumen_productos_df.columns]])
+
+        st.markdown("### Lectura visual por producto")
+        c_left, c_right = st.columns(2)
+        with c_left:
+            if chart_empty_guard(resumen_productos_df, "Utilidad empresa"):
+                st.info("No hay utilidad suficiente para graficar por producto.")
+            else:
+                fig = px.bar(
+                    resumen_productos_df,
+                    x="Nombre corto",
+                    y="Utilidad empresa",
+                    color="Nombre corto",
+                    title="Utilidad total por producto",
+                    text="Utilidad empresa",
+                )
+                fig.update_traces(texttemplate="%{text:,.0f}", textposition="outside")
+                fig.add_hline(y=0, line_dash="dot", line_color="#94A3B8", line_width=1.2)
+                fig.update_layout(height=420, showlegend=False)
+                st.plotly_chart(fig, use_container_width=True)
+        with c_right:
+            if chart_empty_guard(resumen_productos_df, "Venta total"):
+                st.info("No hay venta suficiente para graficar participación.")
+            else:
+                fig = px.pie(
+                    resumen_productos_df,
+                    names="Nombre corto",
+                    values="Venta total",
+                    title="Composición de venta por producto",
+                    hole=0.42,
+                )
+                fig.update_layout(height=420)
+                st.plotly_chart(fig, use_container_width=True)
+
+        c_left, c_right = st.columns(2)
+        with c_left:
+            fig = px.bar(
+                resumen_productos_df,
+                x="Nombre corto",
+                y="Margen",
+                color="Nombre corto",
+                title="Margen por producto",
+                text="Margen",
+            )
+            fig.update_yaxes(tickformat=".1%")
+            fig.update_traces(texttemplate="%{text:.1%}", textposition="outside")
+            fig.update_layout(height=380, showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
+        with c_right:
+            unit_long = resumen_productos_df.melt(
+                id_vars=["Nombre corto"],
+                value_vars=["Precio / ton", "Costo total / ton", "Utilidad / ton"],
+                var_name="Métrica",
+                value_name="Valor",
+            )
+            fig = px.bar(
+                unit_long,
+                x="Nombre corto",
+                y="Valor",
+                color="Métrica",
+                barmode="group",
+                title="Precio, costo y utilidad por tonelada",
+            )
+            fig.update_layout(height=380)
+            st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("### Producto seleccionado para análisis operativo")
+        st.info(
+            f"Las demás pestañas muestran el detalle operativo de **{producto_cfg.nombre}**. "
+            "Cambia el producto en la barra lateral para auditar otro producto sin mezclar índices ni presentaciones."
         )
-        fig.update_traces(marker_line_width=0, opacity=0.9)
-        fig.update_layout(showlegend=False, height=340)
-        st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("### Alertas gerenciales del producto seleccionado")
+        dataframe_gerencial(alertas_df)
+
+        st.markdown("### Desviaciones relevantes del producto seleccionado")
+        if df_prev.empty:
+            st.info("No existe mes anterior cargado para el producto seleccionado. Las desviaciones se activan desde el segundo mes.")
+        elif variaciones_relevantes.empty:
+            st.success("No hay desviaciones relevantes según los umbrales configurados.")
+        else:
+            dataframe_gerencial(variaciones_relevantes.head(10)[["Alerta", "Indice", "Observacion", "Valor", "Valor anterior", "Variacion $", "Variacion %", "Impacto por saco", "Impacto por kg", "Criterio"]])
+
 
 with tabs[1]:
-    st.subheader("Precio de venta, margen y escenarios")
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        kpi("Precio actual antes IVA", money(precio_actual))
-    with c2:
-        kpi("Precio objetivo sin extra", money(precio_obj_sin_extra))
-    with c3:
-        kpi("Brecha vs objetivo", money(brecha_precio))
-    with c4:
-        kpi("Diferencia margen", pct(brecha_margen))
+    st.subheader("Precio de venta, margen y escenarios por producto")
+    st.caption(
+        "Vista multi-producto: uso general y estructural se muestran en el mismo informe. "
+        "Si un producto no tiene bolsas vendidas, su precio promedio aplicado queda en cero."
+    )
 
-    margenes = [m / 100 for m in range(5, 31, 5)]
+    precio_productos_df = resumen_productos_periodo(
+        df_consolidado_completo,
+        productos_disponibles,
+        periodo,
+        incluir_imp_renta,
+        incluir_imp_patrimonio,
+    )
 
-    sensibilidad = []
-    for m in margenes:
-        p_sin = safe_div(costo_total_saco_sin_extra, 1 - m)
-        p_con = safe_div(costo_total_saco_con_extra, 1 - m)
-        utilidad_esperada = p_sin - costo_total_saco_sin_extra
-        sensibilidad.append([
-            "Base",
-            m,
-            p_sin,
-            p_sin * (1 + iva),
-            p_con,
-            p_con * (1 + iva),
-            p_sin - precio_actual,
-            utilidad_esperada,
-        ])
-    sens_df = pd.DataFrame(sensibilidad, columns=[
-        "Tipo", "Margen objetivo", "Precio sin extra antes IVA", "Precio sin extra con IVA",
-        "Precio con extra antes IVA", "Precio con extra con IVA", "Brecha vs precio actual", "Utilidad esperada / saco"
-    ])
+    if precio_productos_df.empty:
+        st.info("No hay productos disponibles para analizar precio y margen.")
+    else:
+        precio_productos_df = precio_productos_df.copy()
+        precio_productos_df["Precio objetivo / bolsa"] = precio_productos_df["Costo total / bolsa"].apply(
+            lambda x: safe_div(x, 1 - margen_obj)
+        )
+        precio_productos_df["Precio objetivo + IVA / bolsa"] = precio_productos_df["Precio objetivo / bolsa"] * (1 + iva)
+        precio_productos_df["Brecha vs objetivo"] = precio_productos_df["Precio / bolsa"] - precio_productos_df["Precio objetivo / bolsa"]
+        precio_productos_df["Diferencia margen"] = precio_productos_df["Margen"] - margen_obj
+        precio_productos_df["Sin ventas"] = precio_productos_df["Bolsas vendidas"].apply(lambda x: "Sí" if float(x or 0) <= 0 else "No")
 
-    col_a, col_b = st.columns([1.25, 1])
-    with col_a:
-        st.markdown("### Precio sugerido de venta por margen")
-        st.caption("Tabla base de 5% a 30%. Margen calculado sobre precio de venta.")
-        dataframe_gerencial(sens_df)
-    with col_b:
-        fig = px.line(sens_df, x="Margen objetivo", y="Precio sin extra antes IVA", markers=True, title="Curva de precio objetivo antes de IVA")
-        fig.update_yaxes(tickprefix="$")
-        fig.update_traces(line_color="#E8650A", line_width=2.5, marker_color="#F5A623", marker_size=8)
-        fig.add_hline(y=precio_actual, line_dash="dot", line_color="#FF4059", annotation_text="Precio actual", annotation_font_color="#FF4059", line_width=1.5)
+        venta_total_precio = float(precio_productos_df["Venta total"].sum())
+        costo_total_precio = float(precio_productos_df["Costo total comercial"].sum())
+        utilidad_total_precio = float(precio_productos_df["Utilidad empresa"].sum())
+        margen_total_precio = safe_div(utilidad_total_precio, venta_total_precio)
+        productos_sin_venta = int((pd.to_numeric(precio_productos_df["Bolsas vendidas"], errors="coerce").fillna(0) <= 0).sum())
+
+        k1, k2, k3, k4 = st.columns(4)
+        with k1:
+            kpi("Venta real total", money(venta_total_precio), help_text="Calculada con bolsas vendidas")
+        with k2:
+            kpi("Costo total productos", money(costo_total_precio), help_text="Costo comercial del periodo")
+        with k3:
+            kpi("Utilidad total productos", money(utilidad_total_precio), tone="red" if utilidad_total_precio < 0 else "green")
+        with k4:
+            kpi("Productos sin venta", num(productos_sin_venta, 2), help_text="Precio promedio aplicado = $0,00", tone="yellow" if productos_sin_venta else "green")
+
+        st.markdown("### Precio, margen y brecha por producto")
+        productos_rows = precio_productos_df.to_dict("records")
+        for start_i in range(0, len(productos_rows), 2):
+            cols = st.columns(min(2, len(productos_rows[start_i:start_i + 2])))
+            for col, row in zip(cols, productos_rows[start_i:start_i + 2]):
+                with col:
+                    sin_venta = float(row.get("Bolsas vendidas", 0) or 0) <= 0
+                    tone = "yellow" if sin_venta else ("red" if float(row.get("Brecha vs objetivo", 0) or 0) < 0 else "green")
+                    st.markdown(
+                        f"""
+                        <div class="kpi-card kpi-{tone}" style="min-height:255px;">
+                          <div>
+                            <div class="kpi-label">{escape(str(row.get('Nombre corto', row.get('Producto', 'Producto'))))}</div>
+                            <div style="font-family:'Sora',sans-serif;font-size:1.02rem;font-weight:800;color:var(--text-pri);line-height:1.15;margin-bottom:10px;">
+                              {escape(str(row.get('Producto','')))}
+                            </div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;color:var(--text-sec);font-size:.82rem;">
+                              <div>Presentación</div><div style="text-align:right;font-weight:800;">{fmt_number(row.get('Kg bolsa',0),2)} kg</div>
+                              <div>Bolsas vendidas</div><div style="text-align:right;font-weight:800;">{fmt_number(row.get('Bolsas vendidas',0),2)}</div>
+                              <div>Precio / bolsa</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Precio / bolsa',0))}</div>
+                              <div>Precio / ton</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Precio / ton',0))}</div>
+                              <div>Costo total / bolsa</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Costo total / bolsa',0))}</div>
+                              <div>Precio objetivo / bolsa</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Precio objetivo / bolsa',0))}</div>
+                              <div>Brecha / bolsa</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Brecha vs objetivo',0))}</div>
+                              <div>Margen</div><div style="text-align:right;font-weight:800;">{fmt_pct(row.get('Margen',0))}</div>
+                            </div>
+                          </div>
+                          <div class="kpi-delta">{"Sin ventas: precio promedio aplicado = $0,00" if sin_venta else "Venta total: " + fmt_money(row.get('Venta total',0))}</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+        columnas_precio = [
+            "Producto", "Obs precio bolsa", "Kg bolsa", "Bolsas vendidas", "Toneladas vendidas",
+            "Precio / bolsa", "Precio / ton", "Costo total / bolsa", "Costo total / ton",
+            "Precio objetivo / bolsa", "Precio objetivo + IVA / bolsa",
+            "Brecha vs objetivo", "Margen", "Diferencia margen", "Venta total", "Costo ventas real", "Utilidad empresa", "Costo producción total", "Costo inventario no vendido", "Sin ventas", "Estado",
+        ]
+        dataframe_gerencial(precio_productos_df[[c for c in columnas_precio if c in precio_productos_df.columns]])
+
+        st.markdown("### Precio sugerido de venta por margen · todos los productos")
+        st.caption("Tabla base de 5% a 30%. Cada producto usa su propia presentación, costo y precio real de venta.")
+
+        margenes = [m / 100 for m in range(5, 31, 5)]
+        sensibilidad_multi = []
+        for _, row in precio_productos_df.iterrows():
+            for m in margenes:
+                costo_bolsa = float(row.get("Costo total / bolsa", 0) or 0)
+                precio_obj_bolsa = safe_div(costo_bolsa, 1 - m)
+                sensibilidad_multi.append([
+                    row.get("Producto", ""),
+                    row.get("Nombre corto", ""),
+                    row.get("Kg bolsa", 0),
+                    row.get("Bolsas vendidas", 0),
+                    row.get("Precio / bolsa", 0),
+                    row.get("Precio / ton", 0),
+                    m,
+                    precio_obj_bolsa,
+                    precio_obj_bolsa * (1 + iva),
+                    safe_div(precio_obj_bolsa, float(row.get("Kg bolsa", 0) or 0)) * 1000.0,
+                    precio_obj_bolsa - float(row.get("Precio / bolsa", 0) or 0),
+                ])
+        sens_df = pd.DataFrame(
+            sensibilidad_multi,
+            columns=[
+                "Producto", "Nombre corto", "Kg bolsa", "Bolsas vendidas", "Precio actual / bolsa",
+                "Precio actual / ton", "Margen objetivo", "Precio objetivo / bolsa",
+                "Precio objetivo con IVA / bolsa", "Precio objetivo / ton", "Brecha vs precio actual",
+            ],
+        )
+
+        col_a, col_b = st.columns([1.25, 1])
+        with col_a:
+            dataframe_gerencial(sens_df)
+        with col_b:
+            fig = px.line(
+                sens_df,
+                x="Margen objetivo",
+                y="Precio objetivo / bolsa",
+                color="Nombre corto",
+                markers=True,
+                title="Curva de precio objetivo antes de IVA por producto",
+            )
+            fig.update_yaxes(tickprefix="$")
+            fig.update_layout(height=430)
+            st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("### Comparativo precio, costo y utilidad por tonelada")
+        comp_cols = ["Precio / ton", "Costo total / ton", "Utilidad / ton"]
+        comp_df = precio_productos_df.melt(
+            id_vars=["Nombre corto"],
+            value_vars=[c for c in comp_cols if c in precio_productos_df.columns],
+            var_name="Métrica",
+            value_name="Valor",
+        )
+        fig = px.bar(
+            comp_df,
+            x="Nombre corto",
+            y="Valor",
+            color="Métrica",
+            barmode="group",
+            title="Precio, costo y utilidad por tonelada · todos los productos",
+        )
+        fig.update_layout(height=420)
         st.plotly_chart(fig, use_container_width=True)
 
+        st.markdown("### Detalle operativo del producto seleccionado")
+        st.info(
+            f"Producto seleccionado en la barra lateral: **{producto_cfg.nombre}**. "
+            "Las pestañas de granel, empacado, variaciones, metodología y simulador profundizan en este producto específico."
+        )
+
 with tabs[2]:
-    st.subheader(f"Granel UG - {periodo.etiqueta}")
+    st.subheader(f"Granel {PRODUCTO_CORTO} - {periodo.etiqueta}")
     c1, c2, c3, c4 = st.columns(4)
     with c1: kpi("Costo total granel", money(costo_granel))
     with c2: kpi("Kg producidos granel", num(kg_granel, 0))
@@ -1464,7 +2407,7 @@ with tabs[2]:
     dataframe_gerencial(pareto_g)
 
 with tabs[3]:
-    st.subheader(f"Empacado UG 50KG - {periodo.etiqueta}")
+    st.subheader(f"Empacado {PRODUCTO_CORTO} - {periodo.etiqueta}")
     c1, c2, c3, c4 = st.columns(4)
     with c1: kpi("Costo empacado completo", money(costo_emp))
     with c2: kpi("UND producidas", num(und_emp, 0))
@@ -1497,7 +2440,7 @@ with tabs[4]:
     st.caption("C IMP REN y C IMP PATR se muestran siempre, pero solo afectan costo, margen y precio objetivo cuando están activados en la barra lateral.")
     dataframe_gerencial(impuestos_opcionales_df)
 
-    gastos_detalle = df_mes[df_mes["Indice_norm"].isin({norm_text(i) for i in INDICES_GASTOS_COMERCIALES})].copy()
+    gastos_detalle = detalle_gastos_comerciales(df_mes)
     gastos_por_indice = (
         gastos_detalle.groupby("Indice", as_index=False)["Valor"].sum().sort_values("Valor", ascending=False)
         if not gastos_detalle.empty else pd.DataFrame(columns=["Indice", "Valor"])
@@ -1536,7 +2479,7 @@ with tabs[4]:
             st.plotly_chart(fig, use_container_width=True)
 
     st.markdown("### Pareto de gastos asignables por observación")
-    pareto_gastos = build_pareto(resumen_por_observacion(df_mes, INDICES_GASTOS_COMERCIALES), und_emp, kg_emp)
+    pareto_gastos = build_pareto(resumen_gastos_comerciales(df_mes), und_emp, kg_emp)
     pareto_chart(pareto_gastos, "Pareto ADM + Ventas + Financieros + Impuestos", top_n)
     dataframe_gerencial(pareto_gastos)
 
@@ -1561,10 +2504,10 @@ with tabs[5]:
     elif vista == "Granel":
         base = resumen_por_observacion(df_mes, INDICES_GRANEL)
     elif vista == "Gastos asignables":
-        base = resumen_por_observacion(df_mes, INDICES_GASTOS_COMERCIALES)
+        base = resumen_gastos_comerciales(df_mes)
     else:
         a = resumen_por_observacion(df_mes, INDICES_EMPACADO)
-        b = resumen_por_observacion(df_mes, INDICES_GASTOS_COMERCIALES)
+        b = resumen_gastos_comerciales(df_mes)
         base = pd.concat([a[["Observacion", "Valor"]], b[["Observacion", "Valor"]]], ignore_index=True)
         base = base.groupby("Observacion", as_index=False)["Valor"].sum().sort_values("Valor", ascending=False)
         total = float(base["Valor"].sum()) if not base.empty else 0
@@ -1639,6 +2582,39 @@ with tabs[7]:
         fig.update_layout(height=350, xaxis_tickangle=-35)
         st.plotly_chart(fig, use_container_width=True)
 
+        st.markdown("### Utilidad mensualizada de la empresa")
+        st.caption("Utilidad total por mes = venta total del mes - costo comercial total del mes. Respeta producto, presentación e impuestos opcionales activos.")
+        util_cols = ["Periodo", "Venta total empresa", "Costo comercial total", "Utilidad empresa", "Utilidad empresa con extra", "Utilidad / ton", "Margen real", "Margen con extra"]
+        util_mensual = kpis_mensuales[[c for c in util_cols if c in kpis_mensuales.columns]].copy()
+
+        u1, u2, u3, u4 = st.columns(4)
+        ultimo_util = kpis_mensuales.iloc[-1]
+        with u1:
+            kpi("Última utilidad mensual", money(ultimo_util.get("Utilidad empresa", 0)), help_text=str(ultimo_util.get("Periodo", "")), tone="red" if ultimo_util.get("Utilidad empresa", 0) < 0 else "green")
+        with u2:
+            kpi("Utilidad con extra", money(ultimo_util.get("Utilidad empresa con extra", 0)), help_text=str(ultimo_util.get("Periodo", "")), tone="red" if ultimo_util.get("Utilidad empresa con extra", 0) < 0 else "green")
+        with u3:
+            kpi("Utilidad / ton", money(ultimo_util.get("Utilidad / ton", 0)), help_text=str(ultimo_util.get("Periodo", "")), tone="red" if ultimo_util.get("Utilidad / ton", 0) < 0 else "green")
+        with u4:
+            kpi("Margen empresa", pct(ultimo_util.get("Margen real", 0)), help_text=str(ultimo_util.get("Periodo", "")), tone="red" if ultimo_util.get("Margen real", 0) < 0 else "green")
+
+        fig = px.bar(kpis_mensuales, x="Periodo", y="Utilidad empresa", title="Utilidad mensualizada de la empresa", text="Utilidad empresa")
+        fig.update_traces(texttemplate="%{text:,.0f}", textposition="outside")
+        fig.add_hline(y=0, line_dash="dot", line_color="#94A3B8", line_width=1.2)
+        fig.update_layout(height=430, xaxis_tickangle=-35, margin=dict(l=30, r=30, t=70, b=110))
+        st.plotly_chart(fig, use_container_width=True)
+
+        util_long = kpis_mensuales.melt(
+            id_vars=["Periodo", "PeriodoOrden"],
+            value_vars=["Venta total empresa", "Costo comercial total", "Utilidad empresa"],
+            var_name="Métrica",
+            value_name="Valor",
+        ).sort_values("PeriodoOrden")
+        fig = px.line(util_long, x="Periodo", y="Valor", color="Métrica", markers=True, title="Venta, costo y utilidad total mensual")
+        fig.update_layout(height=430, xaxis_tickangle=-35)
+        st.plotly_chart(fig, use_container_width=True)
+        dataframe_gerencial(util_mensual)
+
         st.markdown("### Micrográficos ejecutivos de tendencia")
         st.caption(
             "Se eliminaron los micrográficos genéricos por observación. Quedan solo los drivers que sí agregan valor gerencial: "
@@ -1646,11 +2622,13 @@ with tabs[7]:
         )
 
         micro_specs = [
-            ("Costo granel", "Costo granel", "Costo total del granel"),
+            ("Costo granel", "Costo granel total", "Costo total de la etapa granel"),
+            ("Costo granel / kg", "Costo granel / kg", "Costo unitario del granel"),
             ("Costo granel / ton", "Costo granel / ton", "Costo granel por tonelada"),
-            ("Costo empacado", "Costo empacado", "Costo total del empacado"),
+            ("Costo empacado", "Costo empacado total", "Costo total de la etapa empacado"),
+            ("Costo empacado / kg", "Costo empacado / kg", "Costo empacado por kilo"),
             ("Costo empacado / ton", "Costo empacado / ton", "Costo empacado por tonelada"),
-            ("Energía", "Energía", "Costo total de energía detectado"),
+            ("Energía", "Energía total", "Costo total de energía detectado"),
             ("Energía / kg", "Energía / kg", "Energía por kilo producido"),
             ("Energía / ton", "Energía / ton", "Energía por tonelada producida"),
         ]
@@ -1673,9 +2651,9 @@ with tabs[7]:
         else:
             dataframe_gerencial(resumen_micro_df)
 
-            for start_i in range(0, len(micro_specs), 2):
-                cols = st.columns(2)
-                for col_ui, (col_metric, titulo, lectura) in zip(cols, micro_specs[start_i:start_i+2]):
+            for start_i in range(0, len(micro_specs), 3):
+                cols = st.columns(3)
+                for col_ui, (col_metric, titulo, lectura) in zip(cols, micro_specs[start_i:start_i+3]):
                     with col_ui:
                         mini = kpis_mensuales[["Periodo", "PeriodoOrden", col_metric]].copy().sort_values("PeriodoOrden")
                         mini[col_metric] = pd.to_numeric(mini[col_metric], errors="coerce").fillna(0)
@@ -1690,7 +2668,7 @@ with tabs[7]:
         st.markdown("### Auditoría de energía detectada")
         energia_detalle = filas_energia(df)
         if energia_detalle.empty:
-            st.info("No encontré rubros de energía/electricidad/kWh en el producto seleccionado.")
+            st.info("No encontré rubros de energía/electricidad/kWh para el producto seleccionado.")
         else:
             energia_resumen = (
                 periodo_label_df(energia_detalle)
@@ -1714,7 +2692,7 @@ with tabs[7]:
             "Periodo", "Costo granel", "Costo granel / kg", "Costo granel / ton",
             "Costo empacado", "Costo empacado / kg", "Costo empacado / ton",
             "Energía", "Energía / kg", "Energía / ton",
-            "UND producidas", "Kg empacados", "Kg granel"
+            "UND producidas", "UND vendidas", "Kg empacados", "Kg vendidos", "Kg granel"
         ]
         dataframe_gerencial(kpis_mensuales[[c for c in kpis_cols_clave if c in kpis_mensuales.columns]])
 
@@ -1733,11 +2711,12 @@ with tabs[8]:
     val = pd.DataFrame([
         ["Kg granel", OBS_KG_GRANEL, kg_granel, "OK" if kg_granel > 0 else "REVISAR"],
         ["UND empacado", OBS_UND_EMPACADO, und_emp, "OK" if und_emp > 0 else "REVISAR"],
-        ["Precio bolsa", OBS_PRECIO_BOLSA, precio_actual, "OK" if precio_actual > 0 else "REVISAR"],
+        ["UND vendidas", OBS_CANTIDAD_VENDIDA, und_vendida, "OK" if und_vendida > 0 else "SIN VENTA"],
+        ["Precio bolsa", OBS_PRECIO_BOLSA_USADA, precio_actual, "OK" if precio_actual > 0 else "SIN VENTA"],
         ["Cemento transferido", OBS_CEMENTO_GRANEL_TRANSFERIDO, cemento_transf, "OK" if cemento_transf > 0 else "REVISAR"],
-        ["C MP EMP", "Índice", suma_indices(df_mes, ["C MP EMP"]), "OK" if suma_indices(df_mes, ["C MP EMP"]) > 0 else "REVISAR"],
-        ["C MO EMP", "Índice", suma_indices(df_mes, ["C MO EMP"]), "OK" if suma_indices(df_mes, ["C MO EMP"]) > 0 else "REVISAR"],
-        ["C CIF EMP", "Índice", suma_indices(df_mes, ["C CIF EMP"]), "OK" if suma_indices(df_mes, ["C CIF EMP"]) > 0 else "REVISAR"],
+        [INDICES_EMPACADO[0], "Índice", suma_indices(df_mes, [INDICES_EMPACADO[0]]), "OK" if suma_indices(df_mes, [INDICES_EMPACADO[0]]) > 0 else "REVISAR"],
+        [INDICES_EMPACADO[1], "Índice", suma_indices(df_mes, [INDICES_EMPACADO[1]]), "OK" if suma_indices(df_mes, [INDICES_EMPACADO[1]]) > 0 else "REVISAR"],
+        [INDICES_EMPACADO[2], "Índice", suma_indices(df_mes, [INDICES_EMPACADO[2]]), "OK" if suma_indices(df_mes, [INDICES_EMPACADO[2]]) > 0 else "REVISAR"],
     ], columns=["Dato", "Llave buscada", "Valor encontrado", "Estado"])
     dataframe_gerencial(val)
 
@@ -1758,7 +2737,7 @@ with tabs[9]:
         params = pd.DataFrame([
             ["IVA", iva, "%"],
             ["Margen objetivo", margen_obj, "% sobre precio"],
-            ["Kg por saco", 50, "kg"],
+            ["Kg por bolsa", PESO_BOLSA_KG, "kg"],
             ["Mes", periodo.etiqueta, "periodo"],
             ["C IMP REN aplicado al costo", "Sí" if incluir_imp_renta else "No", "opcional"],
             ["C IMP PATR aplicado al costo", "Sí" if incluir_imp_patrimonio else "No", "opcional"],
@@ -1814,10 +2793,10 @@ with tabs[10]:
 
     st.markdown("### 2. Costo industrial del empacado")
     paso_emp = pd.DataFrame([
-        ["Materia prima empacado", "C MP EMP", c_mp_emp, safe_div(c_mp_emp, und_emp), safe_div(c_mp_emp, kg_emp)],
-        ["Mano de obra empacado", "C MO EMP", c_mo_emp, safe_div(c_mo_emp, und_emp), safe_div(c_mo_emp, kg_emp)],
-        ["CIF empacado", "C CIF EMP", c_cif_emp, safe_div(c_cif_emp, und_emp), safe_div(c_cif_emp, kg_emp)],
-        ["Costo empacado completo", "C MP EMP + C MO EMP + C CIF EMP", costo_emp, costo_saco_emp, costo_kg_emp],
+        ["Materia prima empacado", INDICES_EMPACADO[0], c_mp_emp, safe_div(c_mp_emp, und_emp), safe_div(c_mp_emp, kg_emp)],
+        ["Mano de obra empacado", INDICES_EMPACADO[1], c_mo_emp, safe_div(c_mo_emp, und_emp), safe_div(c_mo_emp, kg_emp)],
+        ["CIF empacado", INDICES_EMPACADO[2], c_cif_emp, safe_div(c_cif_emp, und_emp), safe_div(c_cif_emp, kg_emp)],
+        ["Costo empacado completo", " + ".join(INDICES_EMPACADO), costo_emp, costo_saco_emp, costo_kg_emp],
     ], columns=["Paso", "Índices / fórmula", "Valor total", "$/saco", "$/kg"])
     dataframe_gerencial(paso_emp)
 
@@ -1827,9 +2806,9 @@ with tabs[10]:
         ["Administración CIF", "C CIF ADM", suma_indices(df_mes, ["C CIF ADM"]), safe_div(suma_indices(df_mes, ["C CIF ADM"]), und_emp), safe_div(suma_indices(df_mes, ["C CIF ADM"]), kg_emp)],
         ["Ventas mano de obra", "C MO VEN", suma_indices(df_mes, ["C MO VEN"]), safe_div(suma_indices(df_mes, ["C MO VEN"]), und_emp), safe_div(suma_indices(df_mes, ["C MO VEN"]), kg_emp)],
         ["Ventas CIF", "C CIF VEN", suma_indices(df_mes, ["C CIF VEN"]), safe_div(suma_indices(df_mes, ["C CIF VEN"]), und_emp), safe_div(suma_indices(df_mes, ["C CIF VEN"]), kg_emp)],
-        ["Financieros", "C FIN", suma_indices(df_mes, ["C FIN"]), safe_div(suma_indices(df_mes, ["C FIN"]), und_emp), safe_div(suma_indices(df_mes, ["C FIN"]), kg_emp)],
-        ["Impuestos", "C IMP", suma_indices(df_mes, ["C IMP"]), safe_div(suma_indices(df_mes, ["C IMP"]), und_emp), safe_div(suma_indices(df_mes, ["C IMP"]), kg_emp)],
-        ["Total gastos asignables", "C MO ADM + C CIF ADM + C MO VEN + C CIF VEN + C FIN + C IMP", costos_gastos, gastos_saco, gastos_kg],
+        ["Financieros", "C FIN", suma_indices(df_mes, INDICES_FINANCIEROS), safe_div(suma_indices(df_mes, INDICES_FINANCIEROS), und_emp), safe_div(suma_indices(df_mes, INDICES_FINANCIEROS), kg_emp)],
+        ["Impuestos", "C IMP", suma_indices(df_mes, INDICES_IMPUESTOS_BASE), safe_div(suma_indices(df_mes, INDICES_IMPUESTOS_BASE), und_emp), safe_div(suma_indices(df_mes, INDICES_IMPUESTOS_BASE), kg_emp)],
+        ["Total gastos asignables", " + ".join(INDICES_GASTOS_COMERCIALES), costos_gastos, gastos_saco, gastos_kg],
     ], columns=["Paso", "Índices / fórmula", "Valor total", "$/saco", "$/kg"])
     dataframe_gerencial(paso_gastos)
 
@@ -1839,12 +2818,12 @@ with tabs[10]:
 
     st.markdown("### 4. Construcción del costo total comercial")
     puente_comercial = pd.DataFrame([
-        ["A", "Costo empacado completo / saco", "(C MP EMP + C MO EMP + C CIF EMP) / UND PRODUCIDAS Q", costo_saco_emp],
-        ["B", "Gastos asignados / saco", "(C MO ADM + C CIF ADM + C MO VEN + C CIF VEN + C FIN + C IMP) / UND PRODUCIDAS Q", gastos_saco],
+        ["A", "Costo empacado completo / saco", "(" + " + ".join(INDICES_EMPACADO) + ") / UND PRODUCIDAS Q", costo_saco_emp],
+        ["B", "Gastos asignados / saco", "(" + " + ".join(INDICES_GASTOS_COMERCIALES) + ") / UND PRODUCIDAS Q", gastos_saco],
         ["C = A + B", "Costo total comercial / saco", "Costo empacado / saco + gastos asignados / saco", costo_total_saco_sin_extra],
         ["D", "Gastos extraordinarios / saco", "Gastos ExtraOrdinarios / UND PRODUCIDAS Q", gastos_extra_saco],
         ["E = C + D", "Costo total comercial con extraordinarios / saco", "Costo comercial sin extra + gasto extraordinario / saco", costo_total_saco_con_extra],
-        ["F", "Precio actual / saco", "PRECIO PROMEDIO POR BOLSA 50 KG", precio_actual],
+        ["F", "Precio actual / saco", OBS_PRECIO_BOLSA_USADA, precio_actual],
         ["G = F - C", "Utilidad real / saco", "Precio actual - costo total comercial sin extraordinarios", utilidad_saco],
         ["H = G / F", "Margen real", "Utilidad real / saco ÷ precio actual / saco", margen_real],
     ], columns=["Paso", "Concepto", "Fórmula", "Resultado"])
@@ -1881,7 +2860,7 @@ with tabs[11]:
     pareto_total_prompt = pd.concat(
         [
             resumen_por_observacion(df_mes, INDICES_EMPACADO),
-            resumen_por_observacion(df_mes, INDICES_GASTOS_COMERCIALES),
+            resumen_gastos_comerciales(df_mes),
         ],
         ignore_index=True,
     )
@@ -1946,6 +2925,98 @@ with tabs[11]:
 
 
 with tabs[12]:
+    st.subheader("Utilidad de la empresa")
+    st.caption("Vista CFO: utilidad real del mes seleccionado y utilidad proyectada por toneladas para el producto activo.")
+
+    tons_base_util = safe_div(kg_emp, 1000.0)
+    sacos_por_ton_util = SACOS_POR_TON
+    precio_ton_actual_util = precio_actual * sacos_por_ton_util
+
+    st.markdown("### Resultado real del mes")
+    r1, r2, r3, r4 = st.columns(4)
+    with r1:
+        kpi("Venta total real", money(venta_total_real), help_text=f"{num(und_emp, 0)} bolsas · {num(tons_base_util, 2)} t")
+    with r2:
+        kpi("Utilidad real empresa", money(utilidad_total_real), help_text=f"Por bolsa: {money(utilidad_saco)}", tone="red" if utilidad_total_real < 0 else "green")
+    with r3:
+        kpi("Margen real empresa", pct(margen_total_real), tone="red" if margen_total_real < 0 else "green")
+    with r4:
+        kpi("Utilidad con extraordinarios", money(utilidad_total_real_con_extra), help_text=f"Margen: {pct(margen_total_real_con_extra)}", tone="red" if utilidad_total_real_con_extra < 0 else "green")
+
+    utilidad_real_unitaria = pd.DataFrame([
+        ["Venta real", venta_total_real, safe_div(venta_total_real, tons_base_util), safe_div(venta_total_real, kg_emp), safe_div(venta_total_real, und_emp)],
+        ["Costo comercial real sin extraordinarios", costo_total_real_sin_extra, safe_div(costo_total_real_sin_extra, tons_base_util), safe_div(costo_total_real_sin_extra, kg_emp), safe_div(costo_total_real_sin_extra, und_emp)],
+        ["Utilidad real sin extraordinarios", utilidad_total_real, safe_div(utilidad_total_real, tons_base_util), safe_div(utilidad_total_real, kg_emp), safe_div(utilidad_total_real, und_emp)],
+        ["Utilidad real con extraordinarios", utilidad_total_real_con_extra, safe_div(utilidad_total_real_con_extra, tons_base_util), safe_div(utilidad_total_real_con_extra, kg_emp), safe_div(utilidad_total_real_con_extra, und_emp)],
+    ], columns=["Concepto", "Total empresa", "$/ton", "$/kg", "$/bolsa"])
+    dataframe_gerencial(utilidad_real_unitaria)
+
+    st.markdown("### Proyección ejecutiva por toneladas")
+    p1, p2, p3 = st.columns(3)
+    with p1:
+        toneladas_util = st.number_input("Toneladas proyectadas", min_value=0.0, value=float(tons_base_util if tons_base_util > 0 else 1.0), step=10.0, format="%.2f", key="util_toneladas_proyectadas_simple")
+    with p2:
+        precio_ton_util = st.number_input("Precio venta / tonelada antes IVA", min_value=0.0, value=float(precio_ton_actual_util if precio_ton_actual_util > 0 else 0.0), step=1000.0, format="%.2f", key="util_precio_tonelada_simple")
+    with p3:
+        margen_meta_util = st.number_input("Margen meta referencia", min_value=0.0, max_value=0.95, value=float(margen_obj if margen_obj > 0 else 0.15), step=0.01, format="%.2f", key="util_margen_meta_simple")
+
+    factor_util = safe_div(toneladas_util, tons_base_util)
+    sacos_util = toneladas_util * sacos_por_ton_util
+    kg_util = toneladas_util * 1000.0
+    venta_util = toneladas_util * precio_ton_util
+
+    c_adm_util = suma_admin_comercial(df_mes)
+    c_ventas_util = suma_ventas_comercial(df_mes)
+    c_fin_util = suma_financiera_comercial(df_mes)
+    c_imp_util = suma_impuestos_base_comercial(df_mes)
+    venta_base_util_ref = venta_total_real if venta_total_real > 0 else max(tons_base_util * precio_ton_actual_util, 1.0)
+    ventas_pct_util = safe_div(max(c_ventas_util, 0.0), venta_base_util_ref)
+
+    # Proyección simple y auditable: MP y CIF variables; MO, administración y financieros fijos; ventas % sobre nueva venta.
+    mp_util = max(c_mp_emp, 0.0) * factor_util
+    cif_util = max(c_cif_emp, 0.0) * factor_util
+    mo_util = max(c_mo_emp, 0.0)
+    adm_util = max(c_adm_util, 0.0)
+    ventas_util = max(venta_util, 0.0) * ventas_pct_util
+    fin_util = max(c_fin_util, 0.0)
+    imp_util = max(c_imp_util, 0.0)
+    costo_total_util = mp_util + cif_util + mo_util + adm_util + ventas_util + fin_util + imp_util
+    utilidad_proyectada_empresa = venta_util - costo_total_util
+    margen_proyectado_empresa = safe_div(utilidad_proyectada_empresa, venta_util)
+    precio_obj_ton_util = safe_div(safe_div(costo_total_util, toneladas_util), 1 - margen_meta_util)
+
+    g1, g2, g3, g4 = st.columns(4)
+    with g1:
+        kpi("Venta proyectada", money(venta_util), help_text=f"{num(sacos_util, 0)} bolsas · {num(toneladas_util, 2)} t")
+    with g2:
+        kpi("Costo total proyectado", money(costo_total_util), help_text=f"Costo/ton: {money(safe_div(costo_total_util, toneladas_util))}")
+    with g3:
+        kpi("Utilidad proyectada empresa", money(utilidad_proyectada_empresa), help_text=f"Por bolsa: {money(safe_div(utilidad_proyectada_empresa, sacos_util))}", tone="red" if utilidad_proyectada_empresa < 0 else "green")
+    with g4:
+        kpi("Margen proyectado", pct(margen_proyectado_empresa), tone="red" if margen_proyectado_empresa < 0 else "green")
+
+    comparativo_utilidad = pd.DataFrame([
+        ["Real mes seleccionado", tons_base_util, und_emp, venta_total_real, costo_total_real_sin_extra, utilidad_total_real, margen_total_real, safe_div(utilidad_total_real, tons_base_util), safe_div(utilidad_total_real, kg_emp), safe_div(utilidad_total_real, und_emp)],
+        ["Proyectado por toneladas", toneladas_util, sacos_util, venta_util, costo_total_util, utilidad_proyectada_empresa, margen_proyectado_empresa, safe_div(utilidad_proyectada_empresa, toneladas_util), safe_div(utilidad_proyectada_empresa, kg_util), safe_div(utilidad_proyectada_empresa, sacos_util)],
+    ], columns=["Escenario", "Toneladas", "Bolsas", "Venta total", "Costo total", "Utilidad empresa", "Margen", "Utilidad / ton", "Utilidad / kg", "Utilidad / bolsa"])
+    dataframe_gerencial(comparativo_utilidad)
+
+    puente_utilidad = pd.DataFrame([
+        ["Materia prima", "Variable por toneladas", mp_util, safe_div(mp_util, toneladas_util), safe_div(mp_util, sacos_util)],
+        ["CIF producción", "Variable por toneladas", cif_util, safe_div(cif_util, toneladas_util), safe_div(cif_util, sacos_util)],
+        ["Mano de obra producción", "Fijo", mo_util, safe_div(mo_util, toneladas_util), safe_div(mo_util, sacos_util)],
+        ["Administración", "Fijo", adm_util, safe_div(adm_util, toneladas_util), safe_div(adm_util, sacos_util)],
+        ["Costos de venta", "% sobre venta proyectada", ventas_util, safe_div(ventas_util, toneladas_util), safe_div(ventas_util, sacos_util)],
+        ["Financieros", "Fijo", fin_util, safe_div(fin_util, toneladas_util), safe_div(fin_util, sacos_util)],
+        ["Impuestos base", "Fijo", imp_util, safe_div(imp_util, toneladas_util), safe_div(imp_util, sacos_util)],
+        ["Total costo proyectado", "Suma", costo_total_util, safe_div(costo_total_util, toneladas_util), safe_div(costo_total_util, sacos_util)],
+    ], columns=["Concepto", "Driver", "Valor proyectado", "$/ton", "$/bolsa"])
+    dataframe_gerencial(puente_utilidad)
+
+    st.info(f"Precio objetivo para margen meta: {fmt_money(precio_obj_ton_util)}/ton · {fmt_money(safe_div(precio_obj_ton_util, sacos_por_ton_util))}/bolsa.")
+
+
+with tabs[13]:
     st.subheader("Simulador de precios por toneladas producidas")
     st.caption(
         "Modelo aprobado: materias primas escalan con producción; administración y mano de obra de producción permanecen constantes; "
@@ -1953,14 +3024,14 @@ with tabs[12]:
     )
 
     tons_base = safe_div(kg_emp, 1000)
-    sacos_por_ton = 20.0
+    sacos_por_ton = SACOS_POR_TON
     precio_ton_actual = precio_actual * sacos_por_ton
     venta_base = und_emp * precio_actual
 
-    c_adm_base = suma_indices(df_mes, ["C MO ADM", "C CIF ADM"])
-    c_ventas_base = suma_indices(df_mes, ["C MO VEN", "C CIF VEN"])
-    c_fin_base = suma_indices(df_mes, ["C FIN"])
-    c_imp_base = suma_indices(df_mes, ["C IMP"])
+    c_adm_base = suma_admin_comercial(df_mes)
+    c_ventas_base = suma_ventas_comercial(df_mes)
+    c_fin_base = suma_financiera_comercial(df_mes)
+    c_imp_base = suma_impuestos_base_comercial(df_mes)
 
     def _sim_cost_value(value: float) -> float:
         """Base conservadora para proyección: un crédito contable negativo no debe bajar artificialmente el costo unitario al simular volumen."""
@@ -1988,9 +3059,9 @@ with tabs[12]:
     costo_ventas_pct_base = safe_div(ventas_base_modelo, venta_base)
 
     ajustes_negativos = pd.DataFrame([
-        ["C MP EMP", c_mp_emp],
-        ["C MO EMP", c_mo_emp],
-        ["C CIF EMP", c_cif_emp],
+        [INDICES_EMPACADO[0], c_mp_emp],
+        [INDICES_EMPACADO[1], c_mo_emp],
+        [INDICES_EMPACADO[2], c_cif_emp],
         ["C MO ADM + C CIF ADM", c_adm_base],
         ["C MO VEN + C CIF VEN", c_ventas_base],
         ["C FIN", c_fin_base],
@@ -2287,7 +3358,7 @@ with tabs[12]:
     with k4:
         kpi("Precio objetivo + IVA / saco", money(precio_obj_saco_iva), help_text=f"ton + IVA: {money(precio_obj_ton_iva)}")
 
-    precio_kg_actual = safe_div(precio_actual, 50.0)
+    precio_kg_actual = safe_div(precio_actual, PESO_BOLSA_KG)
     costo_total_real_actual = costo_emp + costos_gastos
     costo_ton_actual_real = costo_total_kg_sin_extra * 1000.0
     utilidad_saco_sim = precio_saco_sim - costo_saco_sim
@@ -2341,7 +3412,7 @@ with tabs[12]:
             "REN: " + ("Sí" if incluir_imp_renta_sim else "No") + " · PATR: " + ("Sí" if incluir_imp_patrimonio_sim else "No"),
         ],
     ], columns=[
-        "Escenario", "Toneladas", "Kg", "Bolsas 50 kg", "Costo total", "Costo / kg", "Costo / bolsa", "Costo / tonelada",
+        "Escenario", "Toneladas", "Kg", f"Bolsas {PESO_BOLSA_KG:g} kg", "Costo total", "Costo / kg", "Costo / bolsa", "Costo / tonelada",
         "Precio / kg", "Precio / bolsa", "Precio / tonelada", "Utilidad / kg", "Utilidad / bolsa", "Margen", "Impuestos opcionales",
     ])
     dataframe_gerencial(comparativo_unitario_df)
@@ -2436,3 +3507,341 @@ with tabs[12]:
         - Proyección: C IMP REN está **{'incluido' if incluir_imp_renta_sim else 'excluido'}** y C IMP PATR está **{'incluido' if incluir_imp_patrimonio_sim else 'excluido'}**.
         """
     )
+
+
+with tabs[14]:
+    st.subheader("Escenarios de composición de portafolio de venta")
+    st.caption(
+        "Construye escenarios con cualquier producto activo de Parametros Productos. "
+        "La mezcla, precio y costo por tonelada son editables; los valores por defecto salen del mes seleccionado."
+    )
+
+    resumen_productos_df = resumen_productos_periodo(
+        df_consolidado_completo,
+        productos_disponibles,
+        periodo,
+        incluir_imp_renta,
+        incluir_imp_patrimonio,
+    )
+
+    if resumen_productos_df.empty:
+        st.warning("No hay productos con datos suficientes para crear escenarios de portafolio.")
+    else:
+        base_ton_total = float(resumen_productos_df["Toneladas"].sum())
+        base_venta_total = float(resumen_productos_df["Venta total"].sum())
+        base_utilidad_total = float(resumen_productos_df["Utilidad empresa"].sum())
+        base_margen_total = safe_div(base_utilidad_total, base_venta_total)
+
+        s1, s2, s3, s4 = st.columns(4)
+        with s1:
+            ton_portafolio = st.number_input(
+                "Toneladas totales del escenario",
+                min_value=0.0,
+                value=float(base_ton_total if base_ton_total > 0 else 1000.0),
+                step=100.0,
+                format="%.2f",
+                key="port_ton_total",
+            )
+        with s2:
+            iva_portafolio = st.number_input(
+                "IVA escenario",
+                min_value=0.0,
+                max_value=1.0,
+                value=float(iva),
+                step=0.01,
+                format="%.2f",
+                key="port_iva",
+            )
+        with s3:
+            margen_meta_port = st.number_input(
+                "Margen meta portafolio",
+                min_value=0.0,
+                max_value=0.95,
+                value=float(margen_obj if margen_obj > 0 else 0.15),
+                step=0.01,
+                format="%.2f",
+                key="port_margen_meta",
+            )
+        with s4:
+            st.metric("Margen real base", fmt_pct(base_margen_total))
+
+        escenario_base = resumen_productos_df.copy()
+        if float(escenario_base["Toneladas"].sum()) > 0:
+            escenario_base["Mix %"] = escenario_base["Toneladas"].apply(lambda x: safe_div(x, float(escenario_base["Toneladas"].sum())) * 100.0)
+        else:
+            escenario_base["Mix %"] = safe_div(100.0, len(escenario_base))
+        escenario_base["Precio escenario / ton"] = escenario_base["Precio / ton"]
+        escenario_base["Costo escenario / ton"] = escenario_base["Costo total / ton"]
+        escenario_base["Activo"] = True
+
+        st.markdown("### Parámetros editables del escenario")
+        st.caption("Ajusta mezcla de venta, precio y costo por tonelada. La suma de Mix % debería ser 100%; si no lo es, la app normaliza internamente.")
+        edit_cols = ["Activo", "Producto", "Nombre corto", "Kg bolsa", "Mix %", "Precio escenario / ton", "Costo escenario / ton", "Margen"]
+        escenario_edit = st.data_editor(
+            escenario_base[[c for c in edit_cols if c in escenario_base.columns]],
+            use_container_width=True,
+            hide_index=True,
+            num_rows="fixed",
+            column_config={
+                "Activo": st.column_config.CheckboxColumn("Activo", default=True),
+                "Mix %": st.column_config.NumberColumn("Mix %", min_value=0.0, max_value=100.0, step=1.0, format="%.2f"),
+                "Precio escenario / ton": st.column_config.NumberColumn("Precio / ton", min_value=0.0, step=1000.0, format="$ %.2f"),
+                "Costo escenario / ton": st.column_config.NumberColumn("Costo / ton", min_value=0.0, step=1000.0, format="$ %.2f"),
+                "Kg bolsa": st.column_config.NumberColumn("Kg bolsa", min_value=0.0, step=0.01, format="%.2f"),
+                "Margen": st.column_config.NumberColumn("Margen base", format="%.2f"),
+            },
+            disabled=["Producto", "Nombre corto", "Kg bolsa", "Margen"],
+            key="portafolio_editor",
+        )
+
+        escenario = escenario_edit.copy()
+        escenario = escenario[escenario.get("Activo", True) == True].copy()
+        if escenario.empty:
+            st.warning("Activa al menos un producto para construir el escenario.")
+            st.stop()
+
+        mix_total = float(pd.to_numeric(escenario["Mix %"], errors="coerce").fillna(0).sum())
+        if abs(mix_total - 100.0) > 0.01:
+            st.warning(f"La mezcla suma {fmt_number(mix_total, 2)}%. Para el cálculo se normaliza a 100%.")
+        escenario["Mix normalizado"] = escenario["Mix %"].apply(lambda x: safe_div(float(x), mix_total))
+        escenario["Toneladas escenario"] = escenario["Mix normalizado"] * ton_portafolio
+        escenario["Kg escenario"] = escenario["Toneladas escenario"] * 1000.0
+        escenario["Bolsas escenario"] = escenario.apply(lambda r: safe_div(r["Kg escenario"], r["Kg bolsa"]), axis=1)
+        escenario["Venta escenario"] = escenario["Toneladas escenario"] * escenario["Precio escenario / ton"]
+        escenario["Costo escenario"] = escenario["Toneladas escenario"] * escenario["Costo escenario / ton"]
+        escenario["Utilidad escenario"] = escenario["Venta escenario"] - escenario["Costo escenario"]
+        escenario["Margen escenario"] = escenario.apply(lambda r: safe_div(r["Utilidad escenario"], r["Venta escenario"]), axis=1)
+        escenario["Precio objetivo / ton"] = escenario.apply(lambda r: safe_div(r["Costo escenario / ton"], 1 - margen_meta_port), axis=1)
+        escenario["Precio objetivo + IVA / ton"] = escenario["Precio objetivo / ton"] * (1 + iva_portafolio)
+        escenario["Utilidad / bolsa"] = escenario.apply(lambda r: safe_div(r["Utilidad escenario"], r["Bolsas escenario"]), axis=1)
+        escenario["Utilidad / ton"] = escenario.apply(lambda r: safe_div(r["Utilidad escenario"], r["Toneladas escenario"]), axis=1)
+
+        venta_esc = float(escenario["Venta escenario"].sum())
+        costo_esc = float(escenario["Costo escenario"].sum())
+        utilidad_esc = float(escenario["Utilidad escenario"].sum())
+        margen_esc = safe_div(utilidad_esc, venta_esc)
+        utilidad_ton_esc = safe_div(utilidad_esc, ton_portafolio)
+
+        st.markdown("### Resultado del escenario")
+        r1, r2, r3, r4 = st.columns(4)
+        with r1:
+            kpi("Venta escenario", money(venta_esc), help_text=f"{num(ton_portafolio, 2)} toneladas")
+        with r2:
+            kpi("Costo escenario", money(costo_esc), help_text=f"{money(safe_div(costo_esc, ton_portafolio))}/ton")
+        with r3:
+            kpi("Utilidad escenario", money(utilidad_esc), help_text=f"{money(utilidad_ton_esc)}/ton", tone="red" if utilidad_esc < 0 else "green")
+        with r4:
+            kpi("Margen escenario", pct(margen_esc), tone="red" if margen_esc < 0 else "green")
+
+        r5, r6, r7, r8 = st.columns(4)
+        with r5:
+            kpi("Diferencia venta vs base", money(venta_esc - base_venta_total))
+        with r6:
+            kpi("Diferencia utilidad vs base", money(utilidad_esc - base_utilidad_total), tone="red" if (utilidad_esc - base_utilidad_total) < 0 else "green")
+        with r7:
+            kpi("Margen base", pct(base_margen_total))
+        with r8:
+            kpi("Mejora margen", pct(margen_esc - base_margen_total), tone="red" if (margen_esc - base_margen_total) < 0 else "green")
+
+        tabla_escenario_cols = [
+            "Producto", "Kg bolsa", "Mix %", "Toneladas escenario", "Bolsas escenario",
+            "Precio escenario / ton", "Costo escenario / ton", "Venta escenario", "Costo escenario",
+            "Utilidad escenario", "Utilidad / ton", "Utilidad / bolsa", "Margen escenario",
+            "Precio objetivo / ton", "Precio objetivo + IVA / ton",
+        ]
+        dataframe_gerencial(escenario[[c for c in tabla_escenario_cols if c in escenario.columns]])
+
+        st.markdown("### Visualización del escenario")
+        v1, v2 = st.columns(2)
+        with v1:
+            fig = px.pie(
+                escenario,
+                names="Nombre corto",
+                values="Venta escenario",
+                title="Composición de venta del escenario",
+                hole=0.42,
+            )
+            fig.update_layout(height=420)
+            st.plotly_chart(fig, use_container_width=True)
+        with v2:
+            esc_long = escenario.melt(
+                id_vars=["Nombre corto"],
+                value_vars=["Venta escenario", "Costo escenario", "Utilidad escenario"],
+                var_name="Métrica",
+                value_name="Valor",
+            )
+            fig = px.bar(
+                esc_long,
+                x="Nombre corto",
+                y="Valor",
+                color="Métrica",
+                barmode="group",
+                title="Venta, costo y utilidad por producto",
+            )
+            fig.update_layout(height=420)
+            st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("### Lectura ejecutiva")
+        mejor_producto = escenario.sort_values("Margen escenario", ascending=False).iloc[0]
+        mayor_utilidad = escenario.sort_values("Utilidad escenario", ascending=False).iloc[0]
+        st.markdown(
+            f"""
+            - Producto con mayor margen del escenario: **{mejor_producto['Producto']}** con **{fmt_pct(mejor_producto['Margen escenario'])}**.
+            - Producto que más utilidad aporta: **{mayor_utilidad['Producto']}** con **{fmt_money(mayor_utilidad['Utilidad escenario'])}**.
+            - Utilidad total escenario: **{fmt_money(utilidad_esc)}**, contra utilidad base de **{fmt_money(base_utilidad_total)}**.
+            - La arquitectura queda abierta: un nuevo producto entra al escenario al agregarlo como activo en **Parametros Productos** y cargar sus datos en Consolidado.
+            """
+        )
+
+
+with tabs[15]:
+    st.subheader(f"Costeo integral de ambos productos - {periodo.etiqueta}")
+    st.caption(
+        "Esta es la vista de costeo CFO: separa producción, venta real e inventario económico. "
+        "Cada producto se calcula con su granel propio, su empacado, su presentación, sus gastos y sus ventas reales."
+    )
+
+    costeo_df = resumen_productos_periodo(
+        df_consolidado_completo,
+        productos_disponibles,
+        periodo,
+        incluir_imp_renta,
+        incluir_imp_patrimonio,
+    )
+
+    if costeo_df.empty:
+        st.info("No hay productos para costear en el periodo seleccionado.")
+    else:
+        venta_real_total = float(costeo_df["Venta total"].sum())
+        costo_ventas_total = float(costeo_df["Costo ventas real"].sum())
+        utilidad_real_total = float(costeo_df["Utilidad empresa"].sum())
+        costo_produccion_total = float(costeo_df["Costo producción total"].sum())
+        inventario_no_vendido_total = float(costeo_df["Costo inventario no vendido"].sum())
+        ton_producidas_no_vendidas_total = float(costeo_df.get("Ton producidas no vendidas", pd.Series(dtype=float)).sum())
+        ton_vendidas_inventario_total = float(costeo_df.get("Ton vendidas inventario previo", pd.Series(dtype=float)).sum())
+        balance_neto_ton_total = float(costeo_df["Toneladas"].sum()) - float(costeo_df["Toneladas vendidas"].sum())
+        margen_real_total = safe_div(utilidad_real_total, venta_real_total)
+
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            kpi("Venta real empresa", money(venta_real_total), help_text="Solo bolsas vendidas")
+        with c2:
+            kpi("Costo de ventas real", money(costo_ventas_total), help_text="Costo unitario × bolsas vendidas")
+        with c3:
+            kpi("Utilidad real empresa", money(utilidad_real_total), help_text=f"Margen: {pct(margen_real_total)}", tone="red" if utilidad_real_total < 0 else "green")
+        with c4:
+            kpi("Costo producido no vendido", money(inventario_no_vendido_total), help_text="Inventario económico del periodo", tone="yellow" if inventario_no_vendido_total > 0 else "green")
+
+        c5, c6, c7, c8 = st.columns(4)
+        with c5:
+            kpi("Costo producción total", money(costo_produccion_total), help_text="Costo de ambos productos producidos")
+        with c6:
+            kpi("Ton producidas", num(float(costeo_df["Toneladas"].sum()), 2))
+        with c7:
+            kpi("Ton vendidas", num(float(costeo_df["Toneladas vendidas"].sum()), 2))
+        with c8:
+            kpi("Ton vendidas desde inventario", num(ton_vendidas_inventario_total, 2), help_text=f"Balance neto prod-venta: {num(balance_neto_ton_total, 2)} t", tone="yellow" if ton_vendidas_inventario_total > 0 else "neutral")
+
+        if ton_vendidas_inventario_total > 0 or ton_producidas_no_vendidas_total > 0:
+            st.info(
+                f"Lectura de inventario: se vendieron {num(ton_vendidas_inventario_total, 2)} t desde inventario previo y quedaron "
+                f"{num(ton_producidas_no_vendidas_total, 2)} t producidas no vendidas del periodo. "
+                "Ambas cosas pueden ocurrir al tiempo cuando un producto vende más de lo producido y otro producto queda en inventario."
+            )
+
+        st.markdown("### Cadena de costeo por producto")
+        rows = costeo_df.to_dict("records")
+        for start_i in range(0, len(rows), 2):
+            cols = st.columns(min(2, len(rows[start_i:start_i + 2])))
+            for col, row in zip(cols, rows[start_i:start_i + 2]):
+                with col:
+                    sin_venta = float(row.get("Bolsas vendidas", 0) or 0) <= 0
+                    tone = "yellow" if sin_venta else ("red" if float(row.get("Utilidad empresa", 0) or 0) < 0 else "green")
+                    st.markdown(
+                        f"""
+                        <div class="kpi-card kpi-{tone}" style="min-height:340px;">
+                          <div>
+                            <div class="kpi-label">{escape(str(row.get('Nombre corto', row.get('Producto', 'Producto'))))}</div>
+                            <div style="font-family:'Sora',sans-serif;font-size:1.04rem;font-weight:800;color:var(--text-pri);line-height:1.15;margin-bottom:12px;">
+                              {escape(str(row.get('Producto','')))}
+                            </div>
+                            <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:7px 16px;color:var(--text-sec);font-size:.82rem;">
+                              <div>Presentación</div><div style="text-align:right;font-weight:800;">{fmt_number(row.get('Kg bolsa',0),2)} kg</div>
+                              <div>Costo granel / kg</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Costo granel / kg',0))}</div>
+                              <div>Costo empacado / bolsa</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Costo empacado / bolsa',0))}</div>
+                              <div>Gastos / bolsa</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Gastos / bolsa',0))}</div>
+                              <div>Costo total / bolsa</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Costo total / bolsa',0))}</div>
+                              <div>Bolsas producidas</div><div style="text-align:right;font-weight:800;">{fmt_number(row.get('Bolsas producidas',0),2)}</div>
+                              <div>Bolsas vendidas</div><div style="text-align:right;font-weight:800;">{fmt_number(row.get('Bolsas vendidas',0),2)}</div>
+                              <div>Prod. no vendida</div><div style="text-align:right;font-weight:800;">{fmt_number(row.get('Bolsas producidas no vendidas',0),2)}</div>
+                              <div>Venta desde inv. previo</div><div style="text-align:right;font-weight:800;">{fmt_number(row.get('Bolsas vendidas inventario previo',0),2)}</div>
+                              <div>Precio promedio / bolsa</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Precio / bolsa',0))}</div>
+                              <div>Venta real</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Venta total',0))}</div>
+                              <div>Costo ventas real</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Costo ventas real',0))}</div>
+                              <div>Utilidad real</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Utilidad empresa',0))}</div>
+                              <div>Margen real</div><div style="text-align:right;font-weight:800;">{fmt_pct(row.get('Margen',0))}</div>
+                            </div>
+                          </div>
+                          <div class="kpi-delta">{"Sin ventas: no se reconoce precio promedio ni ingreso" if sin_venta else "Producto con venta real registrada"}</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+        st.markdown("### Tabla CFO de costeo por producto")
+        cols_costeo = [
+            "Producto", "Kg bolsa", "Bolsas producidas", "Bolsas vendidas", "Bolsas producidas no vendidas", "Bolsas vendidas inventario previo",
+            "Toneladas", "Toneladas vendidas", "Ton producidas no vendidas", "Ton vendidas inventario previo", "Saldo neto ton producción - venta", "Costo granel", "Costo granel / kg",
+            "Costo empacado", "Costo empacado / bolsa", "Gastos asignables", "Gastos / bolsa",
+            "Costo producción total", "Costo total / bolsa", "Costo total / ton",
+            "Precio / bolsa", "Precio / ton", "Venta total", "Costo ventas real",
+            "Utilidad empresa", "Utilidad / bolsa", "Utilidad / ton", "Margen",
+            "Costo inventario no vendido", "Obs precio bolsa", "Estado",
+        ]
+        dataframe_gerencial(costeo_df[[c for c in cols_costeo if c in costeo_df.columns]])
+
+        st.markdown("### Producción vs venta")
+        pv_df = costeo_df.melt(
+            id_vars=["Nombre corto"],
+            value_vars=["Bolsas producidas", "Bolsas vendidas", "Bolsas producidas no vendidas", "Bolsas vendidas inventario previo"],
+            var_name="Métrica",
+            value_name="Cantidad bolsas",
+        )
+        fig = px.bar(
+            pv_df,
+            x="Nombre corto",
+            y="Cantidad bolsas",
+            color="Métrica",
+            barmode="group",
+            title="Producción, venta e inventario por producto",
+        )
+        fig.update_layout(height=420)
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("### Resultado económico real por producto")
+        eco_df = costeo_df.melt(
+            id_vars=["Nombre corto"],
+            value_vars=["Venta total", "Costo ventas real", "Utilidad empresa", "Costo inventario no vendido"],
+            var_name="Métrica",
+            value_name="Valor",
+        )
+        fig = px.bar(
+            eco_df,
+            x="Nombre corto",
+            y="Valor",
+            color="Métrica",
+            barmode="group",
+            title="Venta, costo vendido, utilidad e inventario económico",
+        )
+        fig.update_layout(height=440)
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("### Lectura gerencial")
+        st.markdown(
+            """
+            - **Costo producción total** mide lo que costó fabricar cada producto en el periodo.
+            - **Costo ventas real** mide únicamente el costo asociado a las bolsas efectivamente vendidas.
+            - **Costo producido no vendido** no debe confundirse con pérdida comercial: es inventario económico o costo pendiente de monetizar.
+            - Si un producto tiene producción pero cero ventas, el precio promedio aplicado es cero y la venta real es cero.
+            """
+        )
