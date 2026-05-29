@@ -438,7 +438,7 @@ PRODUCTOS_COSTEO_DEFAULT: dict[str, ProductoCosteo] = {
         obs_cantidad_vendida="CEMENTO KOLCEM ART 42.5 KG",
         obs_kg_granel="KG PRODUCIDOS Q",
         obs_und_empacado="UND PRODUCIDAS Q",
-        obs_precio_bolsa="PRECIO PROMEDIO POR BOLSA 50 KG",
+        obs_precio_bolsa="PRECIO PROMEDIO POR BOLSA 42,5 KG",
         modo_gastos="subtotales_producto",
         obs_gastos_total="GASTOS",
         obs_admin="GASTOS ADMINISTRATIVOS",
@@ -1070,6 +1070,75 @@ def suma_obs(df: pd.DataFrame, obs: str, indices: Optional[Iterable[str]] = None
     return float(base["Valor"].sum())
 
 
+def _dedupe_textos(values: Iterable[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for val in values:
+        txt = str(val or "").strip()
+        if not txt:
+            continue
+        key = norm_text(txt)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(txt)
+    return out
+
+
+def _texto_peso_bolsa_para_obs(peso_bolsa_kg: float) -> str:
+    """Convierte 42.5 en '42,5' y 50.0 en '50' para observaciones de Excel."""
+    try:
+        peso = float(peso_bolsa_kg)
+    except Exception:
+        peso = 50.0
+    if abs(peso - round(peso)) < 1e-9:
+        return str(int(round(peso)))
+    txt = f"{peso:.2f}".rstrip("0").rstrip(".")
+    return txt.replace(".", ",")
+
+
+def obs_precio_canonica(peso_bolsa_kg: float) -> str:
+    return f"PRECIO PROMEDIO POR BOLSA {_texto_peso_bolsa_para_obs(peso_bolsa_kg)} KG"
+
+
+def normalizar_obs_precio_bolsa(obs_configurada: str, peso_bolsa_kg: float) -> str:
+    """Si un producto no es de 50 kg y trae la observación histórica de 50 kg, usa la presentación real."""
+    obs = str(obs_configurada or "").strip()
+    if not obs:
+        return obs_precio_canonica(peso_bolsa_kg)
+    try:
+        peso = float(peso_bolsa_kg or 0)
+    except Exception:
+        peso = 50.0
+    if abs(peso - 50.0) > 1e-6 and norm_text(obs) == norm_text("PRECIO PROMEDIO POR BOLSA 50 KG"):
+        return obs_precio_canonica(peso)
+    return obs
+
+
+def candidatos_obs_precio_bolsa(obs_configurada: str, peso_bolsa_kg: float) -> list[str]:
+    """Busca primero la observación correcta de la presentación y deja fallback histórico."""
+    canon = normalizar_obs_precio_bolsa(obs_configurada, peso_bolsa_kg)
+    peso_txt_coma = _texto_peso_bolsa_para_obs(peso_bolsa_kg)
+    peso_txt_punto = peso_txt_coma.replace(",", ".")
+    return _dedupe_textos([
+        canon,
+        f"PRECIO PROMEDIO POR BOLSA {peso_txt_punto} KG",
+        str(obs_configurada or "").strip(),
+        "PRECIO PROMEDIO POR BOLSA 50 KG",
+    ])
+
+
+def suma_obs_precio_bolsa(df: pd.DataFrame, obs_configurada: str, peso_bolsa_kg: float) -> tuple[float, str]:
+    """Retorna el primer precio encontrado para evitar duplicar si existen observaciones alias."""
+    for obs in candidatos_obs_precio_bolsa(obs_configurada, peso_bolsa_kg):
+        valor = suma_obs(df, obs)
+        if abs(valor) > 1e-12:
+            return valor, obs
+    canon = normalizar_obs_precio_bolsa(obs_configurada, peso_bolsa_kg)
+    return 0.0, canon
+
+
+
 OBS_GASTOS_SUBTOTALES = {
     norm_text("GASTOS"),
     norm_text("GASTOS ADMINISTRATIVOS"),
@@ -1371,8 +1440,9 @@ INDICES_GASTOS_COMERCIALES = INDICES_GASTOS_COMERCIALES_BASE.copy()
 INDICES_COSTO_TOTAL = INDICES_EMPACADO + INDICES_GASTOS_COMERCIALES
 OBS_KG_GRANEL = producto_cfg.obs_kg_granel
 OBS_UND_EMPACADO = producto_cfg.obs_und_empacado
-OBS_PRECIO_BOLSA = producto_cfg.obs_precio_bolsa
+OBS_PRECIO_BOLSA = normalizar_obs_precio_bolsa(producto_cfg.obs_precio_bolsa, PESO_BOLSA_KG)
 OBS_CEMENTO_GRANEL_TRANSFERIDO = producto_cfg.obs_cemento_transferido
+OBS_CANTIDAD_VENDIDA = producto_cfg.obs_cantidad_vendida
 
 df = filtrar_producto_costeo(df_consolidado_completo, producto_cfg)
 if df.empty:
@@ -1531,14 +1601,22 @@ precio_obj_sin_extra = safe_div(costo_total_saco_sin_extra, 1 - margen_obj)
 precio_obj_con_extra = safe_div(costo_total_saco_con_extra, 1 - margen_obj)
 precio_obj_sin_extra_iva = precio_obj_sin_extra * (1 + iva)
 precio_obj_con_extra_iva = precio_obj_con_extra * (1 + iva)
-precio_actual = suma_obs(df_mes, OBS_PRECIO_BOLSA)
+und_vendida = suma_obs(df_mes, OBS_CANTIDAD_VENDIDA)
+kg_vendido = und_vendida * PESO_BOLSA_KG
+ton_vendida = safe_div(kg_vendido, 1000.0)
+
+precio_actual_bruto, OBS_PRECIO_BOLSA_USADA = suma_obs_precio_bolsa(df_mes, OBS_PRECIO_BOLSA, PESO_BOLSA_KG)
+precio_actual = precio_actual_bruto if und_vendida > 0 else 0.0
+if und_vendida <= 0 and precio_actual_bruto > 0:
+    OBS_PRECIO_BOLSA_USADA = f"{OBS_PRECIO_BOLSA_USADA} · sin ventas: precio promedio aplicado = 0"
+
 utilidad_saco = precio_actual - costo_total_saco_sin_extra
 margen_real = safe_div(utilidad_saco, precio_actual)
 brecha_precio = precio_actual - precio_obj_sin_extra
 brecha_margen = margen_real - margen_obj
 
 # Resultado empresa del periodo seleccionado
-venta_total_real = und_emp * precio_actual
+venta_total_real = und_vendida * precio_actual
 costo_total_real_sin_extra = costo_emp + costos_gastos
 costo_total_real_con_extra = costo_total_real_sin_extra + gastos_extra
 utilidad_total_real = venta_total_real - costo_total_real_sin_extra
@@ -1626,11 +1704,15 @@ def serie_mensual_kpis(df_in: pd.DataFrame) -> pd.DataFrame:
         kg_g = suma_obs(d, OBS_KG_GRANEL)
         gastos = suma_gastos_comerciales(d)
         gastos_extra_mes = float(d.loc[d["Prod_norm"].str.contains("GASTOS EXTRA", na=False), "Valor"].sum())
-        precio = suma_obs(d, OBS_PRECIO_BOLSA)
+        und_vendida_mes = suma_obs(d, OBS_CANTIDAD_VENDIDA)
+        kg_vendido_mes = und_vendida_mes * PESO_BOLSA_KG
+        ton_vendida_mes = safe_div(kg_vendido_mes, 1000.0)
+        precio_bruto_mes, _obs_precio_mes = suma_obs_precio_bolsa(d, OBS_PRECIO_BOLSA, PESO_BOLSA_KG)
+        precio = precio_bruto_mes if und_vendida_mes > 0 else 0.0
         costo_saco = safe_div(ce, ug)
         costo_comercial = costo_saco + safe_div(gastos, ug)
         utilidad = precio - costo_comercial
-        venta_total_mes = ug * precio
+        venta_total_mes = und_vendida_mes * precio
         costo_comercial_total_mes = ce + gastos
         costo_comercial_total_con_extra_mes = costo_comercial_total_mes + gastos_extra_mes
         utilidad_empresa_mes = venta_total_mes - costo_comercial_total_mes
@@ -1644,7 +1726,10 @@ def serie_mensual_kpis(df_in: pd.DataFrame) -> pd.DataFrame:
             "PeriodoOrden": p.ano * 100 + p.mes_nro,
             "Costo empacado": ce,
             "UND producidas": ug,
+            "UND vendidas": und_vendida_mes,
             "Kg empacados": kg_e,
+            "Kg vendidos": kg_vendido_mes,
+            "Ton vendidas": ton_vendida_mes,
             "Costo / saco": costo_saco,
             "Costo comercial / saco": costo_comercial,
             "Precio actual / saco": precio,
@@ -1787,11 +1872,19 @@ def calcular_resumen_producto(
     gastos_saco_p = safe_div(gastos_p, und_emp_p)
     gastos_kg_p = safe_div(gastos_p, kg_emp_p)
 
-    precio_bolsa_p = suma_obs(df_producto_mes, producto.obs_precio_bolsa)
+    und_vendida_p = suma_obs(df_producto_mes, producto.obs_cantidad_vendida)
+    kg_vendido_p = und_vendida_p * peso_bolsa
+    toneladas_vendidas_p = safe_div(kg_vendido_p, 1000.0)
+
+    precio_bolsa_bruto_p, obs_precio_usada_p = suma_obs_precio_bolsa(df_producto_mes, producto.obs_precio_bolsa, peso_bolsa)
+    precio_bolsa_p = precio_bolsa_bruto_p if und_vendida_p > 0 else 0.0
+    if und_vendida_p <= 0 and precio_bolsa_bruto_p > 0:
+        obs_precio_usada_p = f"{obs_precio_usada_p} · sin ventas: precio promedio aplicado = 0"
+
     precio_kg_p = safe_div(precio_bolsa_p, peso_bolsa)
     precio_ton_p = precio_kg_p * 1000.0
 
-    venta_total_p = und_emp_p * precio_bolsa_p
+    venta_total_p = und_vendida_p * precio_bolsa_p
     costo_total_comercial_p = costo_emp_p + gastos_p
     costo_total_saco_p = safe_div(costo_total_comercial_p, und_emp_p)
     costo_total_kg_p = safe_div(costo_total_comercial_p, kg_emp_p)
@@ -1817,11 +1910,16 @@ def calcular_resumen_producto(
         "Key": producto.key,
         "Producto": producto.nombre,
         "Nombre corto": producto.nombre_corto,
+        "Obs precio bolsa": obs_precio_usada_p,
         "Kg bolsa": peso_bolsa,
         "Bolsas / ton": bolsas_por_ton,
         "Toneladas": toneladas_p,
+        "Bolsas producidas": und_emp_p,
+        "Bolsas vendidas": und_vendida_p,
         "Bolsas": und_emp_p,
         "Kg empacados": kg_emp_p,
+        "Kg vendidos": kg_vendido_p,
+        "Toneladas vendidas": toneladas_vendidas_p,
         "Kg granel": kg_granel_p,
         "Costo granel": costo_granel_p,
         "Costo granel / kg": costo_kg_granel_p,
@@ -1952,7 +2050,8 @@ with tabs[0]:
                             </div>
                             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;color:var(--text-sec);font-size:.82rem;">
                               <div>Presentación</div><div style="text-align:right;font-weight:800;">{fmt_number(row.get('Kg bolsa',0),2)} kg</div>
-                              <div>Toneladas</div><div style="text-align:right;font-weight:800;">{fmt_number(row.get('Toneladas',0),2)}</div>
+                              <div>Ton producidas</div><div style="text-align:right;font-weight:800;">{fmt_number(row.get('Toneladas',0),2)}</div>
+                              <div>Bolsas vendidas</div><div style="text-align:right;font-weight:800;">{fmt_number(row.get('Bolsas vendidas',0),2)}</div>
                               <div>Precio / bolsa</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Precio / bolsa',0))}</div>
                               <div>Costo / bolsa</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Costo total / bolsa',0))}</div>
                               <div>Utilidad / bolsa</div><div style="text-align:right;font-weight:800;">{fmt_money(row.get('Utilidad / bolsa',0))}</div>
@@ -1966,7 +2065,7 @@ with tabs[0]:
                     )
 
         columnas_resumen = [
-            "Producto", "Kg bolsa", "Toneladas", "Bolsas", "Precio / bolsa", "Precio / ton",
+            "Producto", "Obs precio bolsa", "Kg bolsa", "Toneladas", "Bolsas producidas", "Bolsas vendidas", "Toneladas vendidas", "Precio / bolsa", "Precio / ton",
             "Costo total / bolsa", "Costo total / ton", "Utilidad / bolsa", "Utilidad / ton",
             "Venta total", "Costo total comercial", "Utilidad empresa", "Margen", "Participación venta", "Participación utilidad", "Estado",
         ]
@@ -2436,7 +2535,8 @@ with tabs[8]:
     val = pd.DataFrame([
         ["Kg granel", OBS_KG_GRANEL, kg_granel, "OK" if kg_granel > 0 else "REVISAR"],
         ["UND empacado", OBS_UND_EMPACADO, und_emp, "OK" if und_emp > 0 else "REVISAR"],
-        ["Precio bolsa", OBS_PRECIO_BOLSA, precio_actual, "OK" if precio_actual > 0 else "REVISAR"],
+        ["UND vendidas", OBS_CANTIDAD_VENDIDA, und_vendida, "OK" if und_vendida > 0 else "SIN VENTA"],
+        ["Precio bolsa", OBS_PRECIO_BOLSA_USADA, precio_actual, "OK" if precio_actual > 0 else "SIN VENTA"],
         ["Cemento transferido", OBS_CEMENTO_GRANEL_TRANSFERIDO, cemento_transf, "OK" if cemento_transf > 0 else "REVISAR"],
         [INDICES_EMPACADO[0], "Índice", suma_indices(df_mes, [INDICES_EMPACADO[0]]), "OK" if suma_indices(df_mes, [INDICES_EMPACADO[0]]) > 0 else "REVISAR"],
         [INDICES_EMPACADO[1], "Índice", suma_indices(df_mes, [INDICES_EMPACADO[1]]), "OK" if suma_indices(df_mes, [INDICES_EMPACADO[1]]) > 0 else "REVISAR"],
@@ -2547,7 +2647,7 @@ with tabs[10]:
         ["C = A + B", "Costo total comercial / saco", "Costo empacado / saco + gastos asignados / saco", costo_total_saco_sin_extra],
         ["D", "Gastos extraordinarios / saco", "Gastos ExtraOrdinarios / UND PRODUCIDAS Q", gastos_extra_saco],
         ["E = C + D", "Costo total comercial con extraordinarios / saco", "Costo comercial sin extra + gasto extraordinario / saco", costo_total_saco_con_extra],
-        ["F", "Precio actual / saco", OBS_PRECIO_BOLSA, precio_actual],
+        ["F", "Precio actual / saco", OBS_PRECIO_BOLSA_USADA, precio_actual],
         ["G = F - C", "Utilidad real / saco", "Precio actual - costo total comercial sin extraordinarios", utilidad_saco],
         ["H = G / F", "Margen real", "Utilidad real / saco ÷ precio actual / saco", margen_real],
     ], columns=["Paso", "Concepto", "Fórmula", "Resultado"])
