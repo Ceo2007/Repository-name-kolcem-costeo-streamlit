@@ -2084,6 +2084,230 @@ def resumen_productos_periodo(
     return out.sort_values(["Venta total", "Utilidad empresa"], ascending=False)
 
 
+
+
+def _producto_modo_subtotales(producto: ProductoCosteo) -> bool:
+    """Identifica productos cuyos gastos vienen como bloque con subtotales internos."""
+    modo = norm_text(getattr(producto, "modo_gastos", "indices"))
+    return modo in {"SUBTOTALES_PRODUCTO", "SUBTOTALES", "DETALLE_PRODUCTO", "PRODUCTO_SUBTOTALES"}
+
+
+def _mask_indices_df(df_in: pd.DataFrame, indices: Iterable[str]) -> pd.Series:
+    if df_in is None or df_in.empty:
+        return pd.Series(dtype=bool)
+    idx = expandir_indices(indices or [])
+    if not idx:
+        return pd.Series(False, index=df_in.index)
+    return df_in["Indice_norm"].isin(idx)
+
+
+def _sumar_obs_indices_and(df_in: pd.DataFrame, obs_texto: str, indices: Iterable[str]) -> float:
+    """Suma filas que coinciden con una o varias observaciones y, si hay índices, con esos índices."""
+    if df_in is None or df_in.empty:
+        return 0.0
+    obs_list = _split_param_list(obs_texto)
+    if not obs_list and str(obs_texto or "").strip():
+        obs_list = [str(obs_texto).strip()]
+    obs_norm = {norm_text(x) for x in obs_list if str(x).strip()}
+    if not obs_norm:
+        return 0.0
+    mask = df_in["Obs_norm"].isin(obs_norm)
+    idx = expandir_indices(indices or [])
+    if idx:
+        mask = mask & df_in["Indice_norm"].isin(idx)
+    return float(df_in.loc[mask, "Valor"].sum())
+
+
+def _sumar_union_masks(df_in: pd.DataFrame, masks: list[pd.Series]) -> float:
+    if df_in is None or df_in.empty or not masks:
+        return 0.0
+    mask_total = pd.Series(False, index=df_in.index)
+    for mask in masks:
+        if mask is None or len(mask) == 0:
+            continue
+        mask_total = mask_total | mask.reindex(df_in.index, fill_value=False)
+    return float(df_in.loc[mask_total, "Valor"].sum())
+
+
+def _gastos_detalle_producto(
+    df_producto_mes: pd.DataFrame,
+    producto: ProductoCosteo,
+    incluir_renta: bool = False,
+    incluir_patrimonio: bool = False,
+) -> dict[str, float]:
+    """Clasifica gastos por producto evitando duplicar subtotales cuando el producto usa bloque de gastos."""
+    if df_producto_mes is None or df_producto_mes.empty:
+        return {
+            "Administración": 0.0,
+            "Ventas": 0.0,
+            "Financieros": 0.0,
+            "Impuestos base": 0.0,
+            "Impuesto renta": 0.0,
+            "Impuesto patrimonio": 0.0,
+            "Otros gastos aplicables": 0.0,
+            "Gastos asignables total": 0.0,
+        }
+
+    indices_gastos = _indices_gastos_producto(producto, incluir_renta, incluir_patrimonio)
+    gasto_total_config = _sumar_gastos_producto(df_producto_mes, producto, indices_gastos)
+
+    if _producto_modo_subtotales(producto):
+        indices_base = _dedupe_indices(list(producto.indices_gastos_base or []) + list(producto.indices_admin or []) + list(producto.indices_ventas or []))
+        admin = _sumar_obs_indices_and(df_producto_mes, producto.obs_admin, indices_base)
+        ventas = _sumar_obs_indices_and(df_producto_mes, producto.obs_ventas, indices_base)
+
+        # Financieros: usa observación configurada dentro del bloque y también índices financieros explícitos.
+        fin_masks: list[pd.Series] = []
+        obs_fin = {norm_text(x) for x in _split_param_list(producto.obs_financiero) if str(x).strip()}
+        if obs_fin:
+            mask_obs_fin = df_producto_mes["Obs_norm"].isin(obs_fin)
+            idx_base = expandir_indices(indices_base)
+            if idx_base:
+                mask_obs_fin = mask_obs_fin & df_producto_mes["Indice_norm"].isin(idx_base)
+            fin_masks.append(mask_obs_fin)
+        idx_fin = expandir_indices(producto.indices_fin or [])
+        if idx_fin:
+            fin_masks.append(df_producto_mes["Indice_norm"].isin(idx_fin))
+        financieros = _sumar_union_masks(df_producto_mes, fin_masks)
+
+        impuestos_base = _sumar_obs_indices_and(df_producto_mes, "PROVISIÓN IMPUESTOS DE RENTA", indices_base)
+        # Si no hay subtotal por observación, respeta índices parametrizados de impuestos base.
+        if abs(impuestos_base) < 1e-9:
+            impuestos_base = suma_indices(df_producto_mes, producto.indices_imp_base or [])
+    else:
+        admin = suma_indices(df_producto_mes, producto.indices_admin or [])
+        ventas = suma_indices(df_producto_mes, producto.indices_ventas or [])
+        financieros = suma_indices(df_producto_mes, producto.indices_fin or [])
+        impuestos_base = suma_indices(df_producto_mes, producto.indices_imp_base or [])
+
+    renta_detectada = suma_indices(df_producto_mes, ["C IMP REN"])
+    patrimonio_detectado = suma_indices(df_producto_mes, ["C IMP PATR"])
+    renta = renta_detectada if incluir_renta else 0.0
+    patrimonio = patrimonio_detectado if incluir_patrimonio else 0.0
+
+    clasificado = admin + ventas + financieros + impuestos_base + renta + patrimonio
+    otros = gasto_total_config - clasificado
+    if abs(otros) < 1e-7:
+        otros = 0.0
+
+    return {
+        "Administración": float(admin),
+        "Ventas": float(ventas),
+        "Financieros": float(financieros),
+        "Impuestos base": float(impuestos_base),
+        "Impuesto renta": float(renta),
+        "Impuesto patrimonio": float(patrimonio),
+        "Otros gastos aplicables": float(otros),
+        "Gastos asignables total": float(gasto_total_config),
+        "Impuesto renta detectado": float(renta_detectada),
+        "Impuesto patrimonio detectado": float(patrimonio_detectado),
+    }
+
+
+def calcular_componentes_costeo_producto(
+    df_full: pd.DataFrame,
+    producto: ProductoCosteo,
+    periodo_calc: Periodo,
+    incluir_renta: bool = False,
+    incluir_patrimonio: bool = False,
+) -> pd.DataFrame:
+    """Devuelve una tabla larga y auditable con MP, MO, CIF, ADM, ventas e impuestos por producto."""
+    df_producto = filtrar_producto_costeo(df_full, producto)
+    df_producto_mes = filtro_periodo(df_producto, periodo_calc) if df_producto is not None and not df_producto.empty else pd.DataFrame()
+    peso_bolsa = float(producto.peso_bolsa_kg or 0) or 50.0
+    und_emp = suma_obs(df_producto_mes, producto.obs_und_empacado)
+    kg_emp = und_emp * peso_bolsa
+    ton_emp = safe_div(kg_emp, 1000.0)
+
+    def unit_row(
+        grupo: str,
+        componente: str,
+        valor: float,
+        driver: str,
+        indices_formula: str,
+        aplica: bool = True,
+        tipo_fila: str = "Componente",
+        nota: str = "",
+    ) -> dict[str, object]:
+        valor_costo = float(valor) if aplica else 0.0
+        return {
+            "Producto": producto.nombre,
+            "Nombre corto": producto.nombre_corto,
+            "Grupo": grupo,
+            "Componente": componente,
+            "Valor total": float(valor),
+            "Valor que suma al costo": valor_costo,
+            "$ / kg": safe_div(valor_costo, kg_emp),
+            "$ / bolsa": safe_div(valor_costo, und_emp),
+            "$ / ton": safe_div(valor_costo, ton_emp),
+            "Kg bolsa": peso_bolsa,
+            "Bolsas producidas": und_emp,
+            "Kg producidos": kg_emp,
+            "Ton producidas": ton_emp,
+            "Driver": driver,
+            "Índices / fórmula": indices_formula,
+            "Aplica al costo": "Sí" if aplica else "No",
+            "Tipo fila": tipo_fila,
+            "Nota": nota,
+        }
+
+    mp_emp = suma_indices(df_producto_mes, [producto.indices_empacado[0]]) if len(producto.indices_empacado) > 0 else 0.0
+    mo_emp = suma_indices(df_producto_mes, [producto.indices_empacado[1]]) if len(producto.indices_empacado) > 1 else 0.0
+    cif_emp = suma_indices(df_producto_mes, [producto.indices_empacado[2]]) if len(producto.indices_empacado) > 2 else 0.0
+    costo_empacado = mp_emp + mo_emp + cif_emp
+
+    cemento_transferido = suma_obs(df_producto_mes, producto.obs_cemento_transferido, producto.indices_empacado)
+    mp_empaque_incremental = mp_emp - cemento_transferido
+
+    mp_granel = suma_indices(df_producto_mes, [producto.indices_granel[0]]) if len(producto.indices_granel) > 0 else 0.0
+    mo_granel = suma_indices(df_producto_mes, [producto.indices_granel[1]]) if len(producto.indices_granel) > 1 else 0.0
+    cif_granel = suma_indices(df_producto_mes, [producto.indices_granel[2]]) if len(producto.indices_granel) > 2 else 0.0
+    kg_granel = suma_obs(df_producto_mes, producto.obs_kg_granel)
+
+    gastos = _gastos_detalle_producto(df_producto_mes, producto, incluir_renta, incluir_patrimonio)
+    gastos_total = gastos["Gastos asignables total"]
+    costo_total = costo_empacado + gastos_total
+
+    rows: list[dict[str, object]] = []
+    rows.append(unit_row("Industrial empacado", "MP empacado", mp_emp, "Variable / producción", producto.indices_empacado[0] if len(producto.indices_empacado) > 0 else ""))
+    rows.append(unit_row("Industrial empacado", "MO empacado", mo_emp, "Producción", producto.indices_empacado[1] if len(producto.indices_empacado) > 1 else ""))
+    rows.append(unit_row("Industrial empacado", "CIF empacado", cif_emp, "Producción", producto.indices_empacado[2] if len(producto.indices_empacado) > 2 else ""))
+
+    rows.append(unit_row("Informativo", "Cemento granel transferido", cemento_transferido, "Incluido dentro de MP empacado", producto.obs_cemento_transferido, False, "Informativo", "No se suma de nuevo para evitar doble conteo."))
+    rows.append(unit_row("Informativo", "MP/empaque incremental", mp_empaque_incremental, "MP empacado - cemento transferido", f"{producto.indices_empacado[0] if producto.indices_empacado else ''} - {producto.obs_cemento_transferido}", False, "Informativo", "Sirve para ver bolsa/empaque/aditivos netos del empacado."))
+    rows.append(unit_row("Informativo", "Costo granel propio", mp_granel + mo_granel + cif_granel, "Kg granel", " + ".join(producto.indices_granel), False, "Informativo", f"Kg granel detectados: {fmt_number(kg_granel, 2)}"))
+
+    idx_gastos = _indices_gastos_producto(producto, incluir_renta, incluir_patrimonio)
+    rows.append(unit_row("Gastos asignables", "Administración", gastos["Administración"], "Fijo / asignable", " | ".join(producto.indices_admin or idx_gastos)))
+    rows.append(unit_row("Gastos asignables", "Ventas", gastos["Ventas"], "Comercial / asignable", " | ".join(producto.indices_ventas or idx_gastos)))
+    rows.append(unit_row("Gastos asignables", "Financieros", gastos["Financieros"], "Financiero", " | ".join(producto.indices_fin or [])))
+    rows.append(unit_row("Gastos asignables", "Impuestos base", gastos["Impuestos base"], "Impuesto base", " | ".join(producto.indices_imp_base or [])))
+    rows.append(unit_row("Gastos opcionales", "Impuesto renta", gastos["Impuesto renta"], "Opcional", "C IMP REN", incluir_renta, "Componente", f"Detectado: {fmt_money(gastos.get('Impuesto renta detectado', 0.0))}"))
+    rows.append(unit_row("Gastos opcionales", "Impuesto patrimonio", gastos["Impuesto patrimonio"], "Opcional", "C IMP PATR", incluir_patrimonio, "Componente", f"Detectado: {fmt_money(gastos.get('Impuesto patrimonio detectado', 0.0))}"))
+    if abs(gastos["Otros gastos aplicables"]) > 1e-7:
+        rows.append(unit_row("Gastos asignables", "Otros gastos aplicables", gastos["Otros gastos aplicables"], "Conciliación", "Diferencia entre gasto total parametrizado y gastos clasificados"))
+
+    rows.append(unit_row("Subtotal", "Costo empacado industrial", costo_empacado, "Suma MP + MO + CIF empacado", " + ".join(producto.indices_empacado), True, "Subtotal"))
+    rows.append(unit_row("Subtotal", "Gastos asignables total", gastos_total, "Suma ADM + ventas + financieros + impuestos aplicados", " + ".join(idx_gastos), True, "Subtotal"))
+    rows.append(unit_row("Total", "TOTAL COSTO COMERCIAL", costo_total, "Costo empacado + gastos asignables", "Costo empacado industrial + gastos asignables", True, "Total"))
+
+    return pd.DataFrame(rows)
+
+
+def resumen_componentes_costeo_productos(
+    df_full: pd.DataFrame,
+    productos: dict[str, ProductoCosteo],
+    periodo_calc: Periodo,
+    incluir_renta: bool = False,
+    incluir_patrimonio: bool = False,
+) -> pd.DataFrame:
+    tablas = [
+        calcular_componentes_costeo_producto(df_full, cfg, periodo_calc, incluir_renta, incluir_patrimonio)
+        for cfg in productos.values()
+    ]
+    tablas = [t for t in tablas if t is not None and not t.empty]
+    return pd.concat(tablas, ignore_index=True) if tablas else pd.DataFrame()
+
 def chart_empty_guard(df_chart: pd.DataFrame, y_col: str) -> bool:
     return df_chart is None or df_chart.empty or y_col not in df_chart.columns or float(pd.to_numeric(df_chart[y_col], errors="coerce").fillna(0).abs().sum()) <= 0
 
@@ -2107,7 +2331,7 @@ tabs = st.tabs([
     "📊 Utilidad Empresa",
     "🧮 Simulador Toneladas",
     "🧩 Escenarios Portafolio",
-    "🏗️ Costeo Ambos Productos",
+    "🏗️ Costeo por Producto",
 ])
 
 with tabs[0]:
@@ -3749,6 +3973,156 @@ with tabs[15]:
     if costeo_df.empty:
         st.info("No hay productos para costear en el periodo seleccionado.")
     else:
+        componentes_costeo_df = resumen_componentes_costeo_productos(
+            df_consolidado_completo,
+            productos_disponibles,
+            periodo,
+            incluir_imp_renta,
+            incluir_imp_patrimonio,
+        )
+
+        st.markdown("### Análisis único por producto: MP, MO, CIF, administración, ventas e impuestos")
+        st.caption(
+            "Esta es la tabla de verdad para comité: cada producto queda con su costo total, costo/kg y costo/bolsa, "
+            "separando lo industrial de lo administrativo, comercial, financiero e impuestos. "
+            "Las filas informativas ayudan a auditar sin duplicar el costo."
+        )
+
+        if componentes_costeo_df.empty:
+            st.warning("No pude construir el detalle de componentes para los productos del periodo.")
+        else:
+            total_rows = componentes_costeo_df[componentes_costeo_df["Tipo fila"] == "Total"].copy()
+            total_portafolio_componentes = float(total_rows["Valor que suma al costo"].sum())
+            kg_portafolio_componentes = float(costeo_df["Kg empacados"].sum()) if "Kg empacados" in costeo_df.columns else 0.0
+            bolsas_portafolio_componentes = float(costeo_df["Bolsas producidas"].sum()) if "Bolsas producidas" in costeo_df.columns else 0.0
+
+            u1, u2, u3, u4 = st.columns(4)
+            with u1:
+                kpi("Costo comercial producido", money(total_portafolio_componentes), help_text="MP + MO + CIF + ADM + ventas + impuestos")
+            with u2:
+                kpi("Costo promedio / kg", money(safe_div(total_portafolio_componentes, kg_portafolio_componentes)))
+            with u3:
+                kpi("Costo promedio / bolsa", money(safe_div(total_portafolio_componentes, bolsas_portafolio_componentes)))
+            with u4:
+                kpi("Impuestos opcionales", f"REN {'Sí' if incluir_imp_renta else 'No'} · PATR {'Sí' if incluir_imp_patrimonio else 'No'}", tone="yellow" if (incluir_imp_renta or incluir_imp_patrimonio) else "neutral")
+
+            componentes_aplican = componentes_costeo_df[
+                (componentes_costeo_df["Aplica al costo"] == "Sí")
+                & (componentes_costeo_df["Tipo fila"] == "Componente")
+            ].copy()
+
+            componentes_orden = [
+                "MP empacado", "MO empacado", "CIF empacado",
+                "Administración", "Ventas", "Financieros", "Impuestos base",
+                "Impuesto renta", "Impuesto patrimonio", "Otros gastos aplicables",
+            ]
+            matriz_bolsa = componentes_aplican.pivot_table(
+                index=["Producto", "Nombre corto", "Kg bolsa", "Bolsas producidas", "Kg producidos"],
+                columns="Componente",
+                values="$ / bolsa",
+                aggfunc="sum",
+                fill_value=0.0,
+            ).reset_index()
+            matriz_kg = componentes_aplican.pivot_table(
+                index=["Producto"],
+                columns="Componente",
+                values="$ / kg",
+                aggfunc="sum",
+                fill_value=0.0,
+            ).reset_index()
+            matriz_total = componentes_aplican.pivot_table(
+                index=["Producto"],
+                columns="Componente",
+                values="Valor que suma al costo",
+                aggfunc="sum",
+                fill_value=0.0,
+            ).reset_index()
+
+            for comp in componentes_orden:
+                if comp not in matriz_bolsa.columns:
+                    matriz_bolsa[comp] = 0.0
+                if comp not in matriz_kg.columns:
+                    matriz_kg[comp] = 0.0
+                if comp not in matriz_total.columns:
+                    matriz_total[comp] = 0.0
+
+            total_unitarios = total_rows[["Producto", "$ / kg", "$ / bolsa", "$ / ton", "Valor que suma al costo"]].rename(
+                columns={
+                    "$ / kg": "Costo total / kg",
+                    "$ / bolsa": "Costo total / bolsa",
+                    "$ / ton": "Costo total / ton",
+                    "Valor que suma al costo": "Costo total producto",
+                }
+            )
+            matriz_bolsa = matriz_bolsa.merge(total_unitarios, on="Producto", how="left")
+            matriz_kg = matriz_kg.merge(total_unitarios[["Producto", "Costo total / kg"]], on="Producto", how="left")
+            matriz_total = matriz_total.merge(total_unitarios[["Producto", "Costo total producto"]], on="Producto", how="left")
+
+            cols_matriz_bolsa = [
+                "Producto", "Kg bolsa", "Bolsas producidas", "Kg producidos",
+                "MP empacado", "MO empacado", "CIF empacado",
+                "Administración", "Ventas", "Financieros", "Impuestos base",
+                "Impuesto renta", "Impuesto patrimonio", "Otros gastos aplicables",
+                "Costo total / bolsa", "Costo total / kg", "Costo total / ton", "Costo total producto",
+            ]
+            st.markdown("#### Costo unitario por producto · $/bolsa y $/kg")
+            dataframe_gerencial(matriz_bolsa[[c for c in cols_matriz_bolsa if c in matriz_bolsa.columns]])
+
+            st.markdown("#### Detalle completo por componente")
+            detalle_cols = [
+                "Producto", "Grupo", "Componente", "Valor total", "Valor que suma al costo",
+                "$ / kg", "$ / bolsa", "$ / ton", "Aplica al costo", "Driver", "Índices / fórmula", "Nota",
+            ]
+            dataframe_gerencial(componentes_costeo_df[[c for c in detalle_cols if c in componentes_costeo_df.columns]])
+
+            col_cost_1, col_cost_2 = st.columns(2)
+            with col_cost_1:
+                if componentes_aplican.empty:
+                    st.info("No hay componentes aplicables para graficar.")
+                else:
+                    fig = px.bar(
+                        componentes_aplican,
+                        x="Nombre corto",
+                        y="Valor que suma al costo",
+                        color="Componente",
+                        title="Composición del costo total por producto",
+                    )
+                    fig.update_layout(height=430, xaxis_title="Producto", yaxis_title="Valor")
+                    st.plotly_chart(fig, use_container_width=True)
+            with col_cost_2:
+                unit_long = matriz_bolsa.melt(
+                    id_vars=["Nombre corto"],
+                    value_vars=[c for c in componentes_orden if c in matriz_bolsa.columns],
+                    var_name="Componente",
+                    value_name="$ / bolsa",
+                )
+                unit_long = unit_long[pd.to_numeric(unit_long["$ / bolsa"], errors="coerce").fillna(0).abs() > 0]
+                if unit_long.empty:
+                    st.info("No hay costos unitarios por bolsa para graficar.")
+                else:
+                    fig = px.bar(
+                        unit_long,
+                        x="Nombre corto",
+                        y="$ / bolsa",
+                        color="Componente",
+                        title="Costo por bolsa: MP, MO, ADM, ventas e impuestos",
+                    )
+                    fig.update_layout(height=430, xaxis_title="Producto", yaxis_title="$ / bolsa")
+                    st.plotly_chart(fig, use_container_width=True)
+
+            st.download_button(
+                "Descargar costeo por producto (.xlsx)",
+                data=to_excel_bytes({
+                    "Unitario por bolsa": matriz_bolsa,
+                    "Unitario por kg": matriz_kg,
+                    "Totales por componente": matriz_total,
+                    "Detalle completo": componentes_costeo_df,
+                    "Resumen CFO": costeo_df,
+                }),
+                file_name=f"costeo_por_producto_{periodo.ano}_{periodo.mes_nro:02d}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+
         venta_real_total = float(costeo_df["Venta total"].sum())
         costo_ventas_total = float(costeo_df["Costo ventas real"].sum())
         utilidad_real_total = float(costeo_df["Utilidad empresa"].sum())
